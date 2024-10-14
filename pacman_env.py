@@ -40,13 +40,14 @@ class PacmanEnvironment:
         self.living_cost = config.living_cost
         self.lose_reward = config.lose_reward 
         self.win_reward = config.win_reward
-        self.win_penalty_per_ghost = config.win_penalty_per_ghost
+        self.penalty_per_ghost = config.penalty_per_ghost
         self.n_steps = 0
         self.end = False
         self.dead = False
         self.pacman_heading = None
         self.power_credit = 0 # Start with no power for eating ghost
-        self.ghost_colors = ["red", "magenta", "darkorange", "pink"]
+        self.ghost_colors = ["red", "magenta", "skyblue", "darkorange"]
+        self.dir = {'E': (0,1), 'N': (-1,0), 'W': (0,-1), 'S': (1,0)}
         self.actions = {'E': (0, (0,1)), #'East' is at index 0 and change position: i->i+0,  j->j+1
                         'N': (1, (-1,0)),
                         'W': (2, (0,-1)),
@@ -185,21 +186,19 @@ class PacmanEnvironment:
                     dist = cdist(np.asarray(self.current_pacman_pos).reshape((1,2)),
                                  np.asarray(ghost.pos).reshape((1,2)),
                                  metric='cityblock')[0][0]
+                    #assert dist >= 1.0
                     if dist < 1.0:
                         print(f"BUG!!! Ghost ID: {ghost.id}. Ghost pos: {ghost.pos}. Pacman pos: {self.current_pacman_pos}. Power: {self.power_credit}. Steps: {self.n_steps}. dist: {dist}")
                         dist = 1.0
                     if dist < min_dist:
                         min_dist = dist
                     #assert min_dist >= 1.0
-                benefit *= 3.5/np.sqrt(min_dist)
-                if min_dist > self.max_power_credit:
-                    # Ghosts are too far, power cookie should not be eaten
-                    benefit = 0.
+                benefit *= float(self.max_power_credit) / min_dist
                 reward = self.eat_power_cookie_reward * benefit
                 #print(f"min_dist: {min_dist}, benefit: {benefit}, reward: {reward}")
             self.power_credit = self.max_power_credit # Gain power credit for eating ghost
         if len(self.cookies) + len(self.power_cookies) == 0:
-            reward += self.win_reward + (self.win_penalty_per_ghost * len(self.ghosts))
+            reward += self.win_reward + (self.penalty_per_ghost * len(self.ghosts))
             self.end = True
         return reward
         
@@ -281,7 +280,7 @@ class PacmanEnvironment:
         #print(f"_update_pacman_pos({action})")
         action_idx = self.actions[action][0]
         new_pos = self.map_actions[i, j, action_idx]
-        heading = self._heading(self.current_pacman_pos, new_pos)
+        heading = self.heading(self.current_pacman_pos, new_pos)
         self.pacman_heading = heading
         new_pos = tuple(new_pos)
         self.visited_pos.add(new_pos)
@@ -301,89 +300,11 @@ class PacmanEnvironment:
         return reward
 
     def _move_ghost(self, ghost):
-        ghost_pos = ghost.pos
-        heading = ghost.heading
-        all_moves = np.asarray(list(set(map(tuple, self.map_actions[ghost_pos[0],ghost_pos[1]]))))
-        # First, update the ghost aggressivity level
-        # (it will be 0 if pacman has power credit)
-        aggressivity = (self.power_credit == 0) * ghost.aggressivity
-        if np.random.binomial(1, aggressivity):
-            # Attack pacman
-            if ghost.id == 0 or ghost.id == 1:
-                path = ghost.find_path_to(self.current_pacman_pos)
-                path_len = len(path)
-                if path_len > 1:
-                    new_pos = path[1]
-                else:
-                    # if ghost.id != 0:
-                    #     print(f"path: {path}. Ghost ID: {ghost.id}. Ghost pos: {ghost.pos}. Pacman pos: {self.current_pacman_pos}. Steps: {self.n_steps}")
-                    #     assert ghost.id == 0
-                    new_pos = ghost_pos
-            else:
-                # Compute a probability weight for each possible move
-                weights = np.ones(all_moves.shape[0], dtype=float) * self.map.max_dist
-                for idx, pos in enumerate(all_moves):
-                    if numpy.linalg.norm(ghost_pos - pos) == 0:
-                        weights[idx] = 0
-                        continue 
-                    if heading != None and tuple(pos) == heading:
-                        # Encourage to keep same direction
-                        weights[idx] *= 1.5
-                    # Go towards pacman
-                    dist = numpy.linalg.norm(np.asarray(self.current_pacman_pos) - np.asarray(pos))
-                    dist += 0.0001 # Avoid divide by 0
-                    weights[idx] /= dist**2 # Square the distance to increase the differences
-
-                p = weights / np.sum(weights)
-                idx = np.argmax(np.random.multinomial(1, p))
-                new_pos = all_moves[idx]
-        else:
-            weights = np.ones(all_moves.shape[0])
-            for idx, pos in enumerate(all_moves):
-                
-                if aggressivity == 0:
-                    # pacman has the power to eat the ghosts
-                    if ghost.edible_ghost_behavior == EdibleGhostBehaviors.FREEZE:
-                        # The ghost freeze to its current position
-                        if tuple(pos) == ghost_pos:
-                            weights[idx] = 1
-                        else:
-                            weights[idx] = 0
-                    else: 
-                        dist = numpy.linalg.norm(np.asarray(self.current_pacman_pos) - np.asarray(pos))
-                        if ghost.edible_ghost_behavior == EdibleGhostBehaviors.FLEE_SLOW:   
-                            # Flee away from pacman
-                            weights[idx] *= np.sqrt(dist) # use sqrt to give a chance to pacman to catch the ghost
-                        elif ghost.edible_ghost_behavior == EdibleGhostBehaviors.FLEE_FAST:   
-                            # Flee away from pacman
-                            weights[idx] *= dist
-                            if tuple(pos) == self.current_pacman_pos:
-                                weights[idx] = 0
-                        elif ghost.edible_ghost_behavior == EdibleGhostBehaviors.KAMIKAZE:  
-                            dist += 0.0001 # In case dist == 0
-                            weights[idx] *= 1./(dist**2)
-                        else: # edible_ghost_behavior == RANDOM
-                            # uniform distribution among the moves that do not 
-                            # send the ghost into pacman.
-                            if tuple(pos) == self.current_pacman_pos:
-                                weights[idx] = 0
-                            else:
-                                weights[idx] = 1
-                            
-                elif tuple(pos) == heading:
-                    # Encourage to keep same direction
-                    weights[idx] *= 1.5
-                    
-            p = weights / np.sum(weights)
-            idx = np.argmax(np.random.multinomial(1, p))
-            new_pos = all_moves[idx]
-
-        ghost.heading = self._heading(np.asarray(ghost_pos), new_pos)
-        ghost.pos = tuple(new_pos)
+        ghost.move(self)
         reward = self._check_collision(ghost)
         return reward
 
-    def _heading(self, current_pos, next_pos):
+    def heading(self, current_pos, next_pos):
         h = tuple(next_pos - current_pos)
         return self.headings[h]
         
@@ -391,10 +312,10 @@ class PacmanEnvironment:
         self.n_steps += 1
         reward = 0
         #assert self.end == False
-        # First the ghost with id 1 is updated
+        # First the ghost with id 0 is updated
         for ghost in self.ghosts:
             ghost.age += 1
-            if ghost.id == 1:
+            if ghost.id == 0:
                 reward = self._move_ghost(ghost)
                 if self.end == True:
                     return reward
@@ -404,7 +325,7 @@ class PacmanEnvironment:
         if self.end == True:
            return reward
         for ghost in self.ghosts:
-            if ghost.id == 1:
+            if ghost.id == 0:
                 continue
             reward += self._move_ghost(ghost)
             if self.end == True:
@@ -460,22 +381,24 @@ class PacmanEnvironment:
         columns = self.map_actions.shape[1]
         rgb = np.zeros((rows, columns, 3), dtype=np.float32)
         
-        # Green channel for the ghosts' color
-        g = float(self.power_credit) / self.max_power_credit
+        # current percentage of power
+        p = float(self.power_credit) / self.max_power_credit
 
         for i in range(rows):
             for j in range(columns):
                 if (i,j) == self.current_pacman_pos:
-                    b = 1. - g/2
-                    rgb[i,j] = [0,0,b] # Blue pacman 
+                    rgb[i,j] = [0., 0., 1.] # Blue pacman 
                 elif (i,j) in ghosts_pos:
-                    rgb[i,j] = [1,g,0] # From red to pinkish ghost
+                    r = (1. - p)**2
+                    g = p * 0.55
+                    b = p * 0.55
+                    rgb[i,j] = [r, g, b] # From red to greenish ghost
                 elif (i,j) in self.cookies:
-                    rgb[i,j] = [0,1,0] # Green cookie
+                    rgb[i,j] = [0., 1., 0.] # Green cookie
                 elif (i,j) in self.power_cookies:
-                    rgb[i,j] = [0,1,1] # Blueish cookie
+                    rgb[i,j] = [0., 1., 1.] # Blueish cookie
                 elif (i,j) in self.visited_pos:
-                    rgb[i,j] = [1,1,1] # White cells
+                    rgb[i,j] = [1., 1., 1.] # White cells
 
         # First and last rows are removed since they are the upper and lowerborders
         rgb_del = np.delete(rgb, [0, -1], axis=0)

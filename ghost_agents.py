@@ -33,8 +33,6 @@ class PacmanGhost:
         self.color = color
         self.id = id
         self.age = 0 # At each step of the game the ghost age is increased by 1
-        self.dir = {'E': (0,1), 'N': (-1,0), 'W': (0,-1), 'S': (1,0)}
-        #print(f"Ghost {self.id} at pos {self.pos}")
         self.edible_ghost_behavior = edible_ghost_behavior
 
     # Define the Node class
@@ -45,7 +43,8 @@ class PacmanGhost:
         g: float # Cost from start to this node
         h: float # Heuristic cost from this node to destination
             
-    def find_path_to(self, dest: Pos) -> List[Pos]:
+    def _find_path_to(self, env) -> List[Pos]:
+        dest: Pos  = env.current_pacman_pos
         # Implement the A* search algorithm
         def a_star_search(dest):
             path=[]
@@ -88,7 +87,7 @@ class PacmanGhost:
                 closed_list[i][j] = True
             
                 # For each direction, check the successors 
-                for d_i, d_j in self.dir.values():
+                for d_i, d_j in env.dir.values():
                     new_i = i + d_i
                     new_j = j + d_j
                     
@@ -137,3 +136,81 @@ class PacmanGhost:
             return path
                 
         return a_star_search(dest)
+
+    def move(self, env):
+        ghost_pos = self.pos
+        heading =  self.heading
+        all_moves = np.asarray(list(set(map(tuple, env.map_actions[ghost_pos[0],ghost_pos[1]]))))
+        # First, update the ghost aggressivity level
+        # (it will be 0 if pacman has power credit)
+        aggressivity = (env.power_credit == 0) *  self.aggressivity
+        if np.random.binomial(1, aggressivity):
+            # Attack pacman
+            if self.id == 0 or self.id == 1:
+                path = self._find_path_to(env)
+                path_len = len(path)
+                if path_len > 1:
+                    new_pos = path[1]
+                else:
+                    new_pos = ghost_pos
+            else:
+                # Compute a probability weight for each possible move
+                weights = np.ones(all_moves.shape[0], dtype=float) * env.map.max_dist
+                for idx, pos in enumerate(all_moves):
+                    if np.linalg.norm(ghost_pos - pos) == 0:
+                        weights[idx] = 0
+                        continue 
+                    if heading != None and tuple(pos) == heading:
+                        # Encourage to keep same direction
+                        weights[idx] *= 1.5
+                    # Go towards pacman
+                    dist = np.linalg.norm(np.asarray(env.current_pacman_pos) - np.asarray(pos))
+                    dist += 0.0001 # Avoid divide by 0
+                    weights[idx] /= dist**2 # Square the distance to increase the differences
+
+                p = weights / np.sum(weights)
+                idx = np.argmax(np.random.multinomial(1, p))
+                new_pos = all_moves[idx]
+        else:
+            weights = np.ones(all_moves.shape[0])
+            for idx, pos in enumerate(all_moves):
+                
+                if aggressivity == 0:
+                    # pacman has the power to eat the ghosts
+                    if self.edible_ghost_behavior == EdibleGhostBehaviors.FREEZE:
+                        # The ghost freeze to its current position
+                        if tuple(pos) == ghost_pos:
+                            weights[idx] = 1
+                        else:
+                            weights[idx] = 0
+                    else: 
+                        dist = np.linalg.norm(np.asarray(env.current_pacman_pos) - np.asarray(pos))
+                        if self.edible_ghost_behavior == EdibleGhostBehaviors.FLEE_SLOW:   
+                            # Flee away from pacman
+                            weights[idx] *= np.sqrt(dist) # use sqrt to give a chance to pacman to catch the ghost
+                        elif self.edible_ghost_behavior == EdibleGhostBehaviors.FLEE_FAST:   
+                            # Flee away from pacman
+                            weights[idx] *= dist
+                            if tuple(pos) == env.current_pacman_pos:
+                                weights[idx] = 0
+                        elif self.edible_ghost_behavior == EdibleGhostBehaviors.KAMIKAZE:  
+                            dist += 0.0001 # In case dist == 0
+                            weights[idx] *= 1./(dist**2)
+                        else: # edible_ghost_behavior == RANDOM
+                            # uniform distribution among the moves that do not 
+                            # send the ghost into pacman.
+                            if tuple(pos) == env.current_pacman_pos:
+                                weights[idx] = 0
+                            else:
+                                weights[idx] = 1
+                            
+                elif tuple(pos) == heading:
+                    # Encourage to keep same direction
+                    weights[idx] *= 1.5
+                    
+            p = weights / np.sum(weights)
+            idx = np.argmax(np.random.multinomial(1, p))
+            new_pos = all_moves[idx]
+
+        self.heading = env.heading(np.asarray(ghost_pos), new_pos)
+        self.pos = tuple(new_pos)

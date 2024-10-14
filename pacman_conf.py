@@ -28,5 +28,5 @@ class PacmanConf:
     living_cost:float              # Reward for living
     lose_reward: float             # Reward for being eaten by a ghost
     win_reward: float              # Reward for finishing the game (ate all cookies) without being eaten by a ghost
-    win_penalty_per_ghost: float   # Penalty for each ghost not eaten when winning the gmae
+    penalty_per_ghost: float       # Penalty for each ghost not eaten when winning the gmae
 

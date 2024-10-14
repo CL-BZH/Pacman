@@ -20,8 +20,6 @@ import pandas as pd
 import numpy as np
 import pathlib
 
-from matplotlib import pyplot as plt
-
 
 pacman_conf = PacmanConf(playground = pacman_map3,
                             ghost_aggressivities = [0.72, 0.62], #, 0.52, 0.42],
@@ -35,7 +33,7 @@ pacman_conf = PacmanConf(playground = pacman_map3,
                             living_cost = -0.15,
                             lose_reward = -35,
                             win_reward = 30,
-                            win_penalty_per_ghost = -5)
+                            penalty_per_ghost = -5)
 
 def a2c_training(state_dict=None):
     n_envs = 21

@@ -102,12 +102,12 @@ pacman_conf = PacmanConf(playground = pacman_map3,
                             n_power_cookies = 2,
                             max_power_credit = 12,
                             eat_cookie_reward = 0.6,
-                            eat_power_cookie_reward = 0.9,
+                            eat_power_cookie_reward = 1.3,
                             eat_ghost_reward = 22,
                             living_cost = -0.15,
                             lose_reward = -35,
                             win_reward = 30,
-                            win_penalty_per_ghost = -5)
+                            penalty_per_ghost = -5)
 
 env = PacmanEnvironment(pacman_conf)#, start_ghosts_pos=[(5,6), (5,8)])
 

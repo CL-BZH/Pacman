@@ -10,7 +10,7 @@ To let Pacman play games run the command below in a terminal.
 python pacman_play.py
 ```
 
-In the file `pacman.play` you can set the configuartion you want for the games.
+In the file `pacman_play.py` you can set the configuration you want for the games.
 
 `n_games` is the number of game to run.
 
@@ -223,6 +223,5 @@ Where `k` is at most the number of steps `n` for the advantage computation.
 
 ## TODO
 I still have some code cleaning to do.\
-Especially, some code for controlling the behavior of the ghosts is still in the `PacmanEnvironment` class.\
-I will move it to the `PacmanGhost` class.
+
 
