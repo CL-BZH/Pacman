@@ -17,7 +17,7 @@ Pos: TypeAlias = Tuple[int, int]
 class PacmanConf:
     max_n_ghost: ClassVar[int] = 4 # Maximum number of ghost
     playground: PacmanMap          # The playground map
-    ghost_aggressivities: List     # Defines how much the ghost are eager to attack pacman
+    ghost_aggressiveness_levels: List     # Defines how much the ghost are eager to attack pacman
     edible_ghosts_behavior: List   # Behavior of each ghost when it becomes edible
     n_ghosts: int                  # Number of ghost at reset
     n_power_cookies: int           # Number of power cookies (i.e. cookies that give the power to pacman to eat ghost)

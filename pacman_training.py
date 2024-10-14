@@ -22,7 +22,7 @@ import pathlib
 
 
 pacman_conf = PacmanConf(playground = pacman_map3,
-                            ghost_aggressivities = [0.72, 0.62], #, 0.52, 0.42],
+                            ghost_aggressiveness_levels = [0.72, 0.62], #, 0.52, 0.42],
                             edible_ghosts_behavior = [EdibleGhostBehaviors.FLEE_SLOW, EdibleGhostBehaviors.FLEE_SLOW],
                             n_ghosts = 2,
                             n_power_cookies = 2,

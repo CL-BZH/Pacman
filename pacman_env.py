@@ -29,7 +29,7 @@ class PacmanEnvironment:
         # Apply the config
         self.map = copy.deepcopy(config.playground)
         self.n_ghosts = config.n_ghosts
-        self.ghost_aggressivities = config.ghost_aggressivities
+        self.ghost_aggressiveness_levels = config.ghost_aggressiveness_levels
         self.edible_ghosts_behavior = config.edible_ghosts_behavior
         self.n_power_cookies = config.n_power_cookies
         self.n_eaten_power_cookies = 0
@@ -123,9 +123,9 @@ class PacmanEnvironment:
                 ghosts_pos = start_ghosts_pos
             for i, pos in enumerate(ghosts_pos):
                 color = self.ghost_colors[i]
-                aggressivity = self.ghost_aggressivities[i]
+                aggressiveness = self.ghost_aggressiveness_levels[i]
                 edible_ghost_behavior = self.edible_ghosts_behavior[i]
-                self.ghosts.append(PacmanGhost(self.map, pos, aggressivity,
+                self.ghosts.append(PacmanGhost(self.map, pos, aggressiveness,
                                                id=i, color=color,
                                                edible_ghost_behavior=edible_ghost_behavior))
             # Place power cookies (replace normal cookies by power cookies)

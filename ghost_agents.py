@@ -23,11 +23,11 @@ class EdibleGhostBehaviors(Enum):
     KAMIKAZE = 5
 
 class PacmanGhost:
-    def __init__(self, pacman_map: PacmanMap, pos: Pos, aggressivity = 0.85, color="red",
+    def __init__(self, pacman_map: PacmanMap, pos: Pos, aggressiveness = 0.85, color="red",
                  id=0, heading:str=None, edible_ghost_behavior:EdibleGhostBehaviors=EdibleGhostBehaviors.FLEE_SLOW):
         self.map = pacman_map
-        self.aggressivity = aggressivity
-        self.current_aggressivity = self.aggressivity # Level of aggressivity (when 0 the ghost must run away from pacman)
+        self.aggressiveness = aggressiveness
+        self.current_aggressiveness = self.aggressiveness # Level of aggressiveness (when 0 the ghost must run away from pacman)
         self.pos = pos # Current position
         self.heading = heading # Current heading if any
         self.color = color
@@ -141,10 +141,10 @@ class PacmanGhost:
         ghost_pos = self.pos
         heading =  self.heading
         all_moves = np.asarray(list(set(map(tuple, env.map_actions[ghost_pos[0],ghost_pos[1]]))))
-        # First, update the ghost aggressivity level
+        # First, update the ghost aggressiveness level
         # (it will be 0 if pacman has power credit)
-        aggressivity = (env.power_credit == 0) *  self.aggressivity
-        if np.random.binomial(1, aggressivity):
+        aggressiveness = (env.power_credit == 0) *  self.aggressiveness
+        if np.random.binomial(1, aggressiveness):
             # Attack pacman
             if self.id == 0 or self.id == 1:
                 path = self._find_path_to(env)
@@ -175,7 +175,7 @@ class PacmanGhost:
             weights = np.ones(all_moves.shape[0])
             for idx, pos in enumerate(all_moves):
                 
-                if aggressivity == 0:
+                if aggressiveness == 0:
                     # pacman has the power to eat the ghosts
                     if self.edible_ghost_behavior == EdibleGhostBehaviors.FREEZE:
                         # The ghost freeze to its current position
