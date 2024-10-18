@@ -86,7 +86,7 @@ def play_game(env, agent, stockastic=False, display=False):
     return env.dead == True, aborted, len(env.ghosts), env.n_eaten_power_cookies
 
 
-n_games = 1#000
+n_games = 1000
 lost = []
 abort_count = defaultdict(int)
 ghost_count = defaultdict(int)
@@ -96,7 +96,7 @@ if n_games > 1:
     display = False
 
 pacman_conf = PacmanConf(playground = pacman_map3,
-                            ghost_aggressiveness_levels = [0.72, 0.62], #, 0.52, 0.42],
+                            ghost_aggressivities = [0.72, 0.62], #, 0.52, 0.42],
                             edible_ghosts_behavior = [EdibleGhostBehaviors.FLEE_SLOW, EdibleGhostBehaviors.FLEE_SLOW],
                             n_ghosts = 2,
                             n_power_cookies = 2,
@@ -112,8 +112,8 @@ pacman_conf = PacmanConf(playground = pacman_map3,
 env = PacmanEnvironment(pacman_conf)#, start_ghosts_pos=[(5,6), (5,8)])
 
 agent = A2C_PacmanAgent([env], grayscale=False, n_frames=1)
-#agent.load("./Trainings/A2C/2/pacman_color_a2c_env21_steps19_flee_slow_195000.pth")
-agent.load("./Trainings/A2C/1/pacman_color_a2c_env21_steps19_185000.pth")
+agent.load("./Trainings/A2C/Config_1/states_dict_205000.pth")
+#agent.load("./Tmp/pacman_color_a2c_205000.pth")
 
 stockastic = True # When there is no ghost the action is stochastic (else argmax)
 
