@@ -40,7 +40,7 @@ class PacmanAgent(ABC):
         self.total_reward_per_episode = []
 
         rows, columns, channels = self.pacman_envs[0].rgb_image_shape
-        self.img_n_channels = channels # RGB channels of an image
+        self.img_n_channels = channels # Channels of an image
         self.n_frames = n_frames # number of frames (images) per state
         # Store image frames
         self.image_frames = np.zeros((self.img_n_channels * self.n_frames, rows, columns), dtype=np.float32)

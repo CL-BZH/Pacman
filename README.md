@@ -62,26 +62,31 @@ You can also configure the game, the hyperparameters (e.g `initial_learning_rate
 Example:
 ```Python
 pacman_conf = PacmanConf(playground = pacman_map3,
-                         ghost_aggressiveness_levels = [0.72, 0.62], #, 0.52, 0.42],
+                         ghost_aggressiveness_levels = [0.74, 0.64],
                          edible_ghosts_behavior = [EdibleGhostBehaviors.FLEE_FAST,EdibleGhostBehaviors.FLEE_FAST],
                          n_ghosts = 2,
                          n_power_cookies = 2,
                          max_power_credit = 12,
-                         eat_cookie_reward = 0.6,
+                         eat_cookie_reward = 0.8,
                          eat_power_cookie_reward = 1.3,
-                         eat_ghost_reward = 22,
+                         eat_ghost_reward = 20,
                          living_cost = -0.15,
                          lose_reward = -35,
                          win_reward = 30,
-                         win_penalty_per_ghost = -5)
+                         penalty_per_ghost = -5)
 ```
+
+With the ipython notebook `./Tools/plottings.ipynb` it is possible to visualize 
+the progress of the training. Below is an example of the plotting of the training
+evolution.
+![training_progress](./Media/training.png)
 
 ## Some explanations about the software
 
 ### The files
 
 `pacman_maps.py` is where to find the class ```PacmanMap``` use to create boards from
-array of 'o' and '1's.
+array of '0' and '1's.
 
 Boards are defined as an array of '0' and '1'.
 
@@ -159,7 +164,7 @@ The most important part of the code is the loop that runs an episode in each env
 There, for each environment where the game is not finished, the agent takes up to `n` steps 
 (call to the local function `take_action()`). Once the `n` actions were taken (or the game ended), The value loss and the policy loss are computed (call to `A2C.compute_losses()` that is defined in `algorithms.py`). Then those losses collected from all the environments are passed to the A2C object for updating the network (call to `A2C.update()` that is defined in `algorithms.py`).
 
-Let's detail a bit the function `take_action()`.\
+Let's detail a bit the function `take_action()`.
 ```Python
     def take_action(self, env_idx):
         # get the current state
@@ -222,6 +227,10 @@ Where `k` is at most the number of steps `n` for the advantage computation.
 (if the game ends before `n` steps are taken, then `k` is less than `n`)
 
 ## TODO
-I still have some code cleaning to do.\
+<ul>
+<li> Code cleaning </li>
+<li> Add possibility to run some parts of the code on GPU </li>
+</ul>
+
 
 

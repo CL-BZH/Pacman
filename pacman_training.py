@@ -22,14 +22,14 @@ import pathlib
 
 
 pacman_conf = PacmanConf(playground = pacman_map3,
-                            ghost_aggressiveness_levels = [0.72, 0.62], #, 0.52, 0.42],
-                            edible_ghosts_behavior = [EdibleGhostBehaviors.FLEE_SLOW, EdibleGhostBehaviors.FLEE_SLOW],
+                            ghost_aggressiveness_levels = [0.74, 0.64], #, 0.52, 0.42],
+                            edible_ghosts_behavior = [EdibleGhostBehaviors.FLEE_FAST, EdibleGhostBehaviors.FLEE_FAST],
                             n_ghosts = 2,
                             n_power_cookies = 2,
                             max_power_credit = 12,
-                            eat_cookie_reward = 0.6,
+                            eat_cookie_reward = 0.8,
                             eat_power_cookie_reward = 1.3,
-                            eat_ghost_reward = 22,
+                            eat_ghost_reward = 20,
                             living_cost = -0.15,
                             lose_reward = -35,
                             win_reward = 30,
@@ -39,8 +39,8 @@ def a2c_training(state_dict=None):
     n_envs = 21
     n_steps = 19
     
-    initial_lr = 0.0008
-    min_lr = 0.00001
+    initial_lr = 0.0001
+    min_lr = 0.00002
     episodes = 220000
     
     a2c_pacman_envs = []

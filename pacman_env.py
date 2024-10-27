@@ -42,6 +42,8 @@ class PacmanEnvironment:
         self.win_reward = config.win_reward
         self.penalty_per_ghost = config.penalty_per_ghost
         self.n_steps = 0
+        self.cumulated_reward = 0.
+        self.points = 0.
         self.end = False
         self.dead = False
         self.pacman_heading = None
@@ -73,10 +75,12 @@ class PacmanEnvironment:
         self.power_cookies = None # Cookies that give power to eat ghost
         self.fill_map(start_pacman_pos, start_ghosts_pos)
         self.map_actions = np.array(self._init_map_actions())
+        self.image_channels = 4 # RGB channels + 1
 
         
     def reset(self, pacman_start_pos: Optional[Pos]=None, ghosts_start_pos: Optional[List[Pos]]=None):
         self.n_steps = 0
+        self.cumulated_reward = 0.
         self.end = False
         self.dead = False
         self.current_pacman_pos = None
@@ -312,24 +316,30 @@ class PacmanEnvironment:
         self.n_steps += 1
         reward = 0
         #assert self.end == False
-        # First the ghost with id 0 is updated
+        # Update ghosts ages
         for ghost in self.ghosts:
+            assert ghost not in self.dead_ghosts
             ghost.age += 1
+            # The ghost with id 0 is updated before Pacman
             if ghost.id == 0:
                 reward = self._move_ghost(ghost)
                 if self.end == True:
+                    self.cumulated_reward += reward
                     return reward
-                break
-        # Then pacman move to a new position
+        # Then Pacman move to a new position
         reward += self._update_pacman_pos(action)
         if self.end == True:
-           return reward
+            self.cumulated_reward += reward
+            return reward
         for ghost in self.ghosts:
+            assert ghost not in self.dead_ghosts
             if ghost.id == 0:
                 continue
             reward += self._move_ghost(ghost)
             if self.end == True:
                 break
+        
+        self.cumulated_reward += reward
         return reward
 
     def get_all_actions(self):
@@ -364,7 +374,7 @@ class PacmanEnvironment:
         # Borders are removed from the image (see function rgb_image() below).
         rows -= 2
         columns -= 2
-        return (rows, columns, 3)
+        return (rows, columns, self.image_channels)
         
     @property
     def rgb_image(self):
@@ -379,7 +389,7 @@ class PacmanEnvironment:
         # RGB image
         rows = self.map_actions.shape[0]
         columns = self.map_actions.shape[1]
-        rgb = np.zeros((rows, columns, 3), dtype=np.float32)
+        rgb = np.zeros((rows, columns, self.image_channels), dtype=np.float32)
         
         # current percentage of power
         p = float(self.power_credit) / self.max_power_credit
@@ -387,18 +397,16 @@ class PacmanEnvironment:
         for i in range(rows):
             for j in range(columns):
                 if (i,j) == self.current_pacman_pos:
-                    rgb[i,j] = [0., 0., 1.] # Blue pacman 
+                    rgb[i,j] = [0., 0., 1., 0.] # Blue pacman 
                 elif (i,j) in ghosts_pos:
                     r = (1. - p)**2
-                    g = p * 0.55
-                    b = p * 0.55
-                    rgb[i,j] = [r, g, b] # From red to greenish ghost
+                    rgb[i,j] = [r, 0., 0., p] 
                 elif (i,j) in self.cookies:
-                    rgb[i,j] = [0., 1., 0.] # Green cookie
+                    rgb[i,j] = [0., 1., 0., 0.] # Green cookie
                 elif (i,j) in self.power_cookies:
-                    rgb[i,j] = [0., 1., 1.] # Blueish cookie
+                    rgb[i,j] = [0., 1., 1., 0.] # Blueish cookie
                 elif (i,j) in self.visited_pos:
-                    rgb[i,j] = [1., 1., 1.] # White cells
+                    rgb[i,j] = [1., 1., 1., 0.] # White cells
 
         # First and last rows are removed since they are the upper and lowerborders
         rgb_del = np.delete(rgb, [0, -1], axis=0)
@@ -408,6 +416,8 @@ class PacmanEnvironment:
         return rgb_del
         
     def colormap(self, width, height, fig, ax):
+
+        speed = 0.12
         
         # Get all ghosts positions and headings
         ghosts_pos = list()
@@ -422,9 +432,9 @@ class PacmanEnvironment:
         eaten_ghosts_pos = []
         for dead_ghost in self.dead_ghosts:
             if dead_ghost.age == self.n_steps:
-                #if dead_ghost.pos != self.current_pacman_pos:
-                #    print(f"Ghost {dead_ghost.id} current pos: {dead_ghost.pos}\nCurrent Pacman pos: {self.current_pacman_pos}")
-                #    assert dead_ghost.pos == self.current_pacman_pos
+                # if dead_ghost.pos != self.current_pacman_pos:
+                #     print(f"Ghost {dead_ghost.id} current pos: {dead_ghost.pos}\nCurrent Pacman pos: {self.current_pacman_pos}")
+                #     assert dead_ghost.pos == self.current_pacman_pos
                 eaten_ghosts_pos.append(dead_ghost.pos)
                 
                 
@@ -489,7 +499,7 @@ class PacmanEnvironment:
                     (i,j) in eaten_ghosts_pos):
                     x = j + 0.42
                     y = rows - i - 0.62
-                    eaten_ghosts = [(x,y) for pos in eaten_ghosts_pos if pos == (i,j)]   
+                    eaten_ghosts = [(x,y) for pos in eaten_ghosts_pos if pos == (i,j)]
                 if (i,j) == self.current_pacman_pos:
                     pacman_x = j + 0.54
                     pacman_y = rows - i - 0.52
@@ -546,16 +556,21 @@ class PacmanEnvironment:
                 cookie = mpatches.Circle((x,y), 0.17, color=cookie_color, ec="none")
                 ax.add_artist(cookie)
 
-            # Add the cookie that Pacman just ate in frame 0 and 1
-            if self.n_steps > 0 and self.last_eaten_cookie['steps'] == self.n_steps and f < 2:
+            # Add the cookie that Pacman just ate
+            if self.n_steps > 0 and self.last_eaten_cookie['steps'] == self.n_steps:
+                alpha = 1.
+                if f == 2:
+                    alpha = 0.6
                 i, j = self.last_eaten_cookie['pos']
                 x = j + 0.5
                 y = rows - i - 0.5
                 if self.last_eaten_cookie['power'] == True:
-                    power_cookie = mpatches.Circle((x,y), 0.22, color=power_cookie_color, ec="none")
+                    power_cookie = mpatches.Circle((x,y), 0.22, color=power_cookie_color,
+                                                   ec="none", alpha=alpha)
                     ax.add_artist(power_cookie)
                 else:
-                    cookie = mpatches.Circle((x,y), 0.17, color=cookie_color, ec="none")
+                    cookie = mpatches.Circle((x,y), 0.17, color=cookie_color,
+                                             ec="none", alpha=alpha)
                     ax.add_artist(cookie)
                     
                 
@@ -618,21 +633,26 @@ class PacmanEnvironment:
                 for pacman in pacmans:
                     ax.add_artist(pacman)
 
-            # Add the just eaten ghosts (if any) in the 2 first frames
-            if eaten_ghosts != [] and f < 2:
+            # Add the just eaten ghosts (if any)
+            if eaten_ghosts != [] :
                 # Just display 1 ghost even is there is more than 1
                 x, y = eaten_ghosts[0]
                 color = edible_ghost_color
-                w = mpatches.FancyBboxPatch((x-0.01, y+0.01), 0.2, -0.12, ec="none", color='white',
-                                            boxstyle=mpatches.BoxStyle("Roundtooth", pad=0.12))
-                ghost = mpatches.FancyBboxPatch((x,y), 0.2, 0.2, ec="black", color=color,
-                                                boxstyle=mpatches.BoxStyle("Roundtooth", pad=0.3))
-                ghost_eye_left = mpatches.Circle((x-0.05,y+0.15), 0.07, ec="none", color="white")
-                ghost_eye_right = mpatches.Circle((x+0.2,y+0.15), 0.07, ec="none", color="white")
-                ax.add_artist(ghost)
-                ax.add_artist(ghost_eye_left)
-                ax.add_artist(ghost_eye_right)
-                ax.add_artist(w)
+                if f < 2:
+                    w = mpatches.FancyBboxPatch((x-0.01, y+0.01), 0.2, -0.12, ec="none", color='white',
+                                                boxstyle=mpatches.BoxStyle("Roundtooth", pad=0.12))
+                    ghost = mpatches.FancyBboxPatch((x,y), 0.2, 0.2, ec="black", color=color,
+                                                    boxstyle=mpatches.BoxStyle("Roundtooth", pad=0.3))
+                    ghost_eye_left = mpatches.Circle((x-0.05,y+0.15), 0.07, ec="none", color="white")
+                    ghost_eye_right = mpatches.Circle((x+0.2,y+0.15), 0.07, ec="none", color="white")
+                    ax.add_artist(ghost)
+                    ax.add_artist(ghost_eye_left)
+                    ax.add_artist(ghost_eye_right)
+                    ax.add_artist(w)
+                else:
+                    ghost = mpatches.FancyBboxPatch((x,y), 0.2, 0.2, ec="black", color=color, alpha=0.6,
+                                                    boxstyle=mpatches.BoxStyle("Roundtooth", pad=0.3))
+                    ax.add_artist(ghost)
             
                  
             # Add the ghosts
@@ -682,7 +702,24 @@ class PacmanEnvironment:
                 if w != None:
                     ax.add_artist(w)
 
-            plt.pause(0.12)
+            if f == 2:
+                self.points = self.cumulated_reward
+                if self.end == True:
+                    game_over = " GAME OVER"
+                    if self.dead == True:
+                        game_over += "\nPacman lost!"
+                        fontcolor = 'red'
+                    else:
+                        game_over += "\nPacman won!"
+                        fontcolor = 'lime'
+                    ax.text(0.2, 0.6, game_over, transform=ax.transAxes,
+                            fontsize=22, color=fontcolor, fontweight='bold',
+                            verticalalignment='top')
+                
+            info = f"Points: {self.points:.2f}"
+            ax.text(0., 1.08, info, transform=ax.transAxes, fontsize=14,
+                    verticalalignment='top')
+            plt.pause(speed)
             ax.set_axis_off()
             #display(fig);
             if f != 2:
