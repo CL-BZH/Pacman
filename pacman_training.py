@@ -19,6 +19,7 @@ from datetime import timedelta
 import pandas as pd
 import numpy as np
 import pathlib
+from pathlib import Path
 
 
 pacman_conf = PacmanConf(playground = pacman_map3,
@@ -120,6 +121,8 @@ def dqn_training():
     
 if __name__ == "__main__":
     
-    #a2c_training("./Trainings/A2C/2/pacman_color_a2c_env21_steps19_flee_slow_195000.pth")
+    Path("./Tmp").mkdir(parents=True, exist_ok=True)
+    
+    #a2c_training("./Trainings/A2C/Config_1/states_dict_220000.pth")
     a2c_training()
     
