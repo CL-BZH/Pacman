@@ -42,7 +42,7 @@ def a2c_training(state_dict=None):
     
     initial_lr = 0.00001
     min_lr = 0.00001
-    episodes = 30000
+    episodes = 60000
     
     a2c_pacman_envs = []
     for _ in range(n_envs):
@@ -71,16 +71,6 @@ def a2c_training(state_dict=None):
     t6 = f"episodes = {episodes}"
     conf_file.write_text("\n".join([t1,t2,t3,t4,t5,t6]))
     
-    n = a2c_pacman_agent.reward_per_episode
-    df = pd.DataFrame(n, columns = ['numbers',])
-    #augment the index so it starts at 1 
-    df.index = np.arange(1, len(df)+1)
-    
-    # create a new column for the cumulative average
-    df['ema'] = df['numbers'].rolling(1000).mean()/n_envs
-
-    pkl = path + new_dir_name + "/" + "rewards.pkl"
-    df.to_pickle(pkl)
     
 def dqn_training():
     n_envs = 32
@@ -123,6 +113,6 @@ if __name__ == "__main__":
     
     Path("./Tmp").mkdir(parents=True, exist_ok=True)
     
-    a2c_training("./Trainings/A2C/Config_1/states_dict_220000.pth")
+    a2c_training("./Trainings/A2C/Config_2/states_dict_55000.pth")
     #a2c_training()
     
