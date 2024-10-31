@@ -40,9 +40,9 @@ def a2c_training(state_dict=None):
     n_envs = 21
     n_steps = 19
     
-    initial_lr = 0.00001
+    initial_lr = 0.0004
     min_lr = 0.00001
-    episodes = 60000
+    episodes = 300000
     
     a2c_pacman_envs = []
     for _ in range(n_envs):
@@ -113,6 +113,6 @@ if __name__ == "__main__":
     
     Path("./Tmp").mkdir(parents=True, exist_ok=True)
     
-    a2c_training("./Trainings/A2C/Config_2/states_dict_55000.pth")
-    #a2c_training()
+    #a2c_training("./Trainings/A2C/Config_2/states_dict_55000.pth")
+    a2c_training()
     
