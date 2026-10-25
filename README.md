@@ -255,11 +255,6 @@ log\;\pi(a_{t+j}|s_{t+j}) -  \eta \frac{1}{k}\sum_{j=0}^{k-1}\big( \delta_{t+j} 
 Where `k` is at most the number of steps `n` for the advantage computation. 
 (if the game ends before `n` steps are taken, then `k` is less than `n`)
 
-## TODO
-<ul>
-<li> Code cleaning </li>
-<li> Add possibility to run some parts of the code on GPU </li>
-</ul>
 
 
 
