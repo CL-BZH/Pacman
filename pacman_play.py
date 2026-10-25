@@ -119,9 +119,12 @@ agent.load("./Trainings/A2C/Config_3/states_dict_60000.pth")
 
 stockastic = True # When there is no ghost the action is stochastic (else argmax)
 
-# agent = DQN_PacmanAgent([env], grayscale=False, n_frames=1)
-# agent.load("pacman_color_dqn_tmp.pth")
-# #agent.load("pacman_color_dqn_215000.pth")
+# agent = DQN_PacmanAgent([env], grayscale=False, n_frames=2) # n_frames must match the training
+# agent.load("./Tmp/pacman_dqn_final.pth")
+# # Old checkpoints (original network, 1 frame) are detected and loaded automatically:
+# #agent = DQN_PacmanAgent([env], grayscale=False, n_frames=1)
+# #agent.load("./Trainings/DQN/pacman_color_dqn_215000.pth")
+# agent.epsilon = 0.
 # stockastic = False
   
 for i in range(n_games):

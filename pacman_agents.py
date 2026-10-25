@@ -23,6 +23,8 @@ from typing import List
 #from matplotlib import pyplot as plt
 #from IPython.display import display
 import pandas as pd
+import pathlib
+from collections import deque
 
 class PacmanAgent(ABC):
     def __init__(self, pacman_envs: List[PacmanEnvironment], n_frames, grayscale):
@@ -71,21 +73,7 @@ class PacmanAgent(ABC):
             
             self.episode_total_reward = 0
             
-            # Select a start position
-            start_pos = None
-            while start_pos == None:
-                pos_selection_distribution = np.reciprocal(self.weights)
-                pos_selection_distribution = pos_selection_distribution / np.sum(pos_selection_distribution)
-                idx  = np.random.choice(list(range(len(self.pacman_envs[env_idx].valid_pos))), p=pos_selection_distribution)
-                
-                start_pos = self.pacman_envs[env_idx].valid_pos[idx]
-                self.weights[idx] += 1
-                
-                if (self.pacman_envs[env_idx].start_ghosts_pos != None and
-                    np.min(cdist([start_pos], self.pacman_envs[env_idx].start_ghosts_pos)) < 2):
-                    start_pos = None
-            
-            self.pacman_envs[env_idx].reset(start_pos)
+            self.reset_env(env_idx)
     
             self.episode_history = []
             self.episode_rewards = []
@@ -94,6 +82,35 @@ class PacmanAgent(ABC):
             self.child_reset_episode(env_idx)
             
         
+    def reset_env(self, env_idx):
+        '''
+        Reset one environment with a start position chosen so that
+        rarely used start positions are favoured.
+        '''
+        start_pos = None
+        while start_pos == None:
+            pos_selection_distribution = np.reciprocal(self.weights)
+            pos_selection_distribution = pos_selection_distribution / np.sum(pos_selection_distribution)
+            idx  = np.random.choice(list(range(len(self.pacman_envs[env_idx].valid_pos))), p=pos_selection_distribution)
+            
+            start_pos = self.pacman_envs[env_idx].valid_pos[idx]
+            self.weights[idx] += 1
+            
+            if (self.pacman_envs[env_idx].start_ghosts_pos != None and
+                np.min(cdist([start_pos], self.pacman_envs[env_idx].start_ghosts_pos)) < 2):
+                start_pos = None
+        
+        self.pacman_envs[env_idx].reset(start_pos)
+
+    def observation(self, env_idx):
+        '''
+        Current image of an environment as a (channels, height, width) float32 array.
+        '''
+        img = self.image_processing(self.pacman_envs[env_idx].rgb_image)
+        if self.img_n_channels > 1:
+            img = np.transpose(img, (2, 0, 1))
+        return np.ascontiguousarray(img, dtype=np.float32)
+
     def set_gamma(self, gamma):
         self.gamma = gamma
 
@@ -166,11 +183,29 @@ class PacmanAgent(ABC):
 
 
 class DQN_PacmanAgent(PacmanAgent):
-    def __init__(self, pacman_envs: List[PacmanEnvironment], gamma=0.99, initial_lr=0.0005, initial_tau=1., grayscale=False, n_frames=1):
+    '''
+    DQN agent.
+
+    Training (run_episodes) steps all the environments in lockstep: at each
+    step the Q-network evaluates the states of all environments in a single
+    batched forward pass (efficient on GPU), every environment performs one
+    move, finished games are restarted immediately, and the network is updated
+    every 'train_freq' steps. Schedules (epsilon, learning rate) are expressed
+    in environment steps rather than in episodes.
+    '''
+    def __init__(self, pacman_envs: List[PacmanEnvironment], gamma=0.99, initial_lr=2.5e-4, initial_tau=0.005,
+                 grayscale=False, n_frames=1, batch_size=128, buffer_capacity=200_000, n_step=3,
+                 double=True, network="dueling", reward_scale=0.1, device=None):
         super().__init__(pacman_envs, n_frames, grayscale)
         self.epsilon = 1
         self.lr = initial_lr
-        self.DQN = DQN(self.input_shape, self.n_actions, gamma, initial_lr, initial_tau)
+        self.DQN = DQN(self.input_shape, self.n_actions, gamma, initial_lr, initial_tau,
+                       batch_size=batch_size, buffer_capacity=buffer_capacity,
+                       n_envs=self.n_envs, n_step=n_step, double=double,
+                       network=network, reward_scale=reward_scale, device=device)
+        # One stack of frames per environment
+        self.frame_stacks = [deque(maxlen=self.n_frames) for _ in range(self.n_envs)]
+        print(f"DQN agent on device: {self.DQN.device}. Input shape: {self.input_shape}")
         
 
     def child_reset_episode(self, env_idx):
@@ -186,7 +221,6 @@ class DQN_PacmanAgent(PacmanAgent):
             stack.append(tensor_img)
         self.image_frames = torch.stack(stack)
         current_state = self.frames_to_state()
-        #print(f"{env_idx}. Reset. Current state: {current_state}.\n Shape: {current_state.shape}")
         self.current_state.append(current_state)
         
         
@@ -194,16 +228,12 @@ class DQN_PacmanAgent(PacmanAgent):
         def rand_argmax(tens):
             condition = (tens == tens.max()).flatten()
             max_inds = torch.argwhere(condition)
-            return np.random.choice(max_inds.flatten())
+            return int(np.random.choice(max_inds.flatten()))
 
         p = np.random.random()
         if stockastic == False or p < (1 - self.epsilon):
-            with torch.no_grad():
-                qvalues = self.DQN.policy_net(state) # Call CNN.forward(state)
-                #action = torch.argmax(qvalues).detach().cpu().numpy()
-                action = rand_argmax(qvalues)
-                #print(f"qvalues: {qvalues}. action: {action}\n")
-                return action
+            qvalues = self.DQN.qvalues(state).cpu()
+            return rand_argmax(qvalues)
         return random.randint(0, self.n_actions - 1)
     
     
@@ -216,177 +246,157 @@ class DQN_PacmanAgent(PacmanAgent):
 
         
     def take_action(self, env_idx):
-        # get the current state
+        '''
+        Play one move in one environment with the epsilon-greedy policy
+        (no learning). Training uses run_episodes().
+        '''
         state = self.current_state[env_idx]
-        #print(f"Current state: {state}")
-                
-        # Take action according to current policy
         action_idx, action = self.select_action(state, stockastic=True, env_idx=env_idx)
-        #print(f"actions: {self.actions}. action idx: {action_idx}")
-         
-        # Pass the action to the environment and get a reward
         reward = self.pacman_envs[env_idx].step(action)
         self.episode_rewards.append(reward)
-        
-        # get the reached state
-        rgb = self.pacman_envs[env_idx].rgb_image
-        np_img = self.image_processing(rgb)
-        # Put in the format for Pytorch Conv2d
-        new_state = self.image_to_state(np_img)
-        
-        # Update current state
-        self.current_state[env_idx] = new_state
-        
-        # Add a new entry in the Replay memory
-        self.DQN.memory.push((state,
-                              torch.Tensor([action_idx]).type(torch.int64),
-                              torch.Tensor([reward]),
-                              new_state,
-                              self.pacman_envs[env_idx].end))
+        np_img = self.image_processing(self.pacman_envs[env_idx].rgb_image)
+        self.current_state[env_idx] = self.image_to_state(np_img)
+        return reward
+
+
+    def stacked_observation(self, env_idx, reset=False):
+        '''
+        State of environment 'env_idx': its last n_frames images stacked along
+        the channel axis (oldest first). On reset, the first image is repeated.
+        '''
+        obs = self.observation(env_idx)
+        stack = self.frame_stacks[env_idx]
+        if reset:
+            stack.clear()
+            stack.extend([obs] * self.n_frames)
+        else:
+            stack.append(obs)
+        return np.concatenate(stack, axis=0)
             
     
-    # Run episodes for training
-    def run_episodes(self, episode_max_length=500, total_episodes=10000, epsilon=1, decay=0.9999, min_lr=0.0002, r=0.9):
+    # Run steps for training
+    def run_episodes(self, total_steps=3_000_000, episode_max_length=1000,
+                     epsilon_start=1.0, epsilon_end=0.02, epsilon_fraction=0.25,
+                     learning_starts=20_000, train_freq=1, gradient_steps=1,
+                     min_lr=None, log_interval=200, save_interval=250_000,
+                     save_dir="./Tmp"):
+        '''
+        Train the agent.
+        parameters:
+            total_steps: total number of environment steps (transitions), all environments together.
+            episode_max_length: games longer than this are aborted (truncated, not terminal).
+            epsilon_start, epsilon_end, epsilon_fraction: epsilon decays linearly from
+                epsilon_start to epsilon_end over the first epsilon_fraction * total_steps steps.
+            learning_starts: number of transitions collected before learning starts.
+            train_freq, gradient_steps: 'gradient_steps' updates every 'train_freq'
+                vector steps (one vector step = one move in every environment).
+            min_lr: if set, the learning rate decays linearly from initial_lr to min_lr.
+            log_interval: print statistics every 'log_interval' finished games.
+            save_interval: save the network every 'save_interval' steps.
+        '''
+        n_envs = self.n_envs
+        save_dir = pathlib.Path(save_dir)
+        save_dir.mkdir(parents=True, exist_ok=True)
 
-        def epsilon_generator(r):
-            eps_start = self.epsilon
-            eps_end = 0.01
-            eps = eps_start
-            e = eps
-            s = (eps_end - 0.5)/total_episodes
-            episode = 0
-            while episode < total_episodes:
-                yield eps
-                episode += 1
-                y = s * episode + 0.5
-                e *= decay
-                #e = max(e, eps_end)
-                eps = r * e + (1-r) * y
-            
-        def learning_rate_generator():
-            updated_lr = self.lr
-            episode = 0
-            while episode < total_episodes:
-                if updated_lr < min_lr:
-                    updated_lr = min_lr
-                yield updated_lr
-                episode += 1
-                updated_lr = self.lr * ( 1 - (episode / total_episodes))**4
-        
-        self.epsilon = epsilon
-        eps_gen = epsilon_generator(r)
-        
-        if min_lr != self.lr:
-            lr = learning_rate_generator()
-        
         self.reset()
-        episodes = 0
-        self.reward_per_episode = []
-        episodes_durations = []
-        average_duration_str = ""
-        average_reward_str = ""
-        lost_percentage_str = ""
-        back = -99
-        lost_count = 0
-        ghost_count = 0
-        finished_games = 1
-        aborted_game = False
-        rolling = 1000
-        alpha = self.lr
+        states = []
+        for env_idx in range(n_envs):
+            self.reset_env(env_idx)
+            states.append(self.stacked_observation(env_idx, reset=True))
+        states = np.stack(states)
 
-        
-        while episodes != total_episodes:
-            start = time.time()
-            
-            if episodes % 100 == 0:
-                print(f"Episodes {episodes}. Epsilon = {self.epsilon:.3f}" + 
-                      average_duration_str + average_reward_str +
-                      lost_percentage_str +
-                      f". Avg ghost: {float(ghost_count)/finished_games:.3f}." +
-                      f", (lr: {alpha:.6f})")
-                episodes_durations = []
-                lost_count = 0
-                finished_games = 0
-                ghost_count = 0
-            
-            if episodes % (5*rolling) == 0:
-                print(f"Save NN params (episodes: {episodes})")
-                filename = f"./Tmp/pacman_color_dqn_{episodes}.pth"
-                self.save(filename)
-                
-                column_name = f"Reward per episode on {self.n_envs} environments"
-                df = pd.DataFrame(self.reward_per_episode, columns = [column_name,])
-                
-                #df.to_csv('./Tmp/pacman_dqn_cum_avg_reward_per_episode.csv', index=False)
-                df.to_pickle('./Tmp/pacman_dqn_cum_avg_reward_per_episode.pkl')
-                
-            # Reset for an episode
-            self.reset_episode()
-            
-            # Reduce the number of environment
-            if episodes == total_episodes // 2:
-                self.n_envs = max(1, self.n_envs // 2)
-                print(f"Episodes {episodes}. -> Number of environment divided by 2 (self.n_envs = {self.n_envs})")
-            
-            # Run an episode in each environment
-            for env_idx in range(self.n_envs):
-                #assert self.pacman_envs[env_idx].end == False
-                
-                self.episode_rewards = []
-                current_episode_counter = episode_max_length
-                env = self.pacman_envs[env_idx]
-                while env.end == False:
-                    current_episode_counter -=1
-                    self.take_action(env_idx)
-                    if (current_episode_counter == 0 and env.end == False):
-                        #print(f"Abort env {env_idx}. Number of ghost: {len(self.pacman_envs[env_idx].ghosts)} !")
-                        # Abort the game for this environment
-                        #self.episode_rewards[-1] = -5
-                        aborted_game = True
-                        break
-                        
-                #print(f"Env {env_idx}. Total reward: {np.sum(self.episode_rewards)}")
-                self.reward_per_episode.append(np.sum(self.episode_rewards))
-    
-                lost_count += int(self.pacman_envs[env_idx].dead == True)
-                
-                if aborted_game == False:
-                    finished_games += 1
-                    ghost_count += len(env.ghosts)
-                    
-                aborted_game = False
-            
-            
-            # Update the Neural Network
-            self.DQN.update()
-            
-            # If use learning rate decay:
-            if min_lr != self.lr:
-                alpha = next(lr)
-                for param_group in self.DQN.optimizer.param_groups:
-                    param_group['lr'] = alpha
-            
-            episodes += 1
-            self.epsilon = next(eps_gen)
-            
-            lost_percentage = lost_count*100/(finished_games+0.0000001)
-            
-            end = time.time()
-            episodes_durations.append(timedelta(seconds=end-start))
-            average_duration_str = f", Average duration: {np.mean(episodes_durations)}"
-            back = max(-len(self.reward_per_episode)+1, -99)
-            average_reward_str = f", Average reward: {np.mean(self.reward_per_episode[back:-1]):.2f}"
-            lost_percentage_str = f". lost: {lost_percentage:.1f}%"    
+        ep_rewards = np.zeros(n_envs)
+        ep_lengths = np.zeros(n_envs, dtype=np.int64)
+        history = []
+        loss_sum, q_sum, n_updates = 0., 0., 0
+        lr = self.lr
+        step, vec_step, next_save, logged = 0, 0, save_interval, 0
+        start = time.time()
+        last_log_time, last_log_step = start, 0
 
-        print(f"Episodes {episodes}. Epsilon = {self.epsilon:.3f}, "
-              f", Average duration: {np.mean(episodes_durations)}"
-              f", Average reward: {np.mean(self.reward_per_episode[back:-1]):.2f}")
+        while step < total_steps:
+            # Linear epsilon schedule
+            frac = min(1., step / max(1., epsilon_fraction * total_steps))
+            self.epsilon = epsilon_start + frac * (epsilon_end - epsilon_start)
+
+            # Batched epsilon-greedy action selection for all environments
+            greedy = self.DQN.qvalues(states).argmax(dim=1).cpu().numpy()
+            explore = np.random.random(n_envs) < self.epsilon
+            actions = np.where(explore, np.random.randint(0, self.n_actions, n_envs), greedy)
+
+            next_states = np.empty_like(states)
+            for env_idx, env in enumerate(self.pacman_envs):
+                reward = env.step(self.actions[actions[env_idx]])
+                ep_rewards[env_idx] += reward
+                ep_lengths[env_idx] += 1
+                obs = self.stacked_observation(env_idx)
+                done = env.end
+                truncated = (not done) and ep_lengths[env_idx] >= episode_max_length
+                self.DQN.memory.push(env_idx, states[env_idx], actions[env_idx], reward, obs, done, truncated)
+
+                if done or truncated:
+                    history.append({"step": step, "reward": ep_rewards[env_idx],
+                                    "length": ep_lengths[env_idx],
+                                    "won": bool(done and not env.dead), "lost": bool(env.dead),
+                                    "aborted": bool(truncated), "ghosts_left": len(env.ghosts),
+                                    "power_cookies_eaten": env.n_eaten_power_cookies})
+                    self.reset_env(env_idx)
+                    obs = self.stacked_observation(env_idx, reset=True)
+                    ep_rewards[env_idx] = 0.
+                    ep_lengths[env_idx] = 0
+                next_states[env_idx] = obs
+
+            states = next_states
+            step += n_envs
+            vec_step += 1
+
+            # Learning
+            if step >= learning_starts and vec_step % train_freq == 0:
+                for _ in range(gradient_steps):
+                    loss, q = self.DQN.learn()
+                    loss_sum += loss
+                    q_sum += q
+                    n_updates += 1
+                if min_lr is not None:
+                    progress = (step - learning_starts) / max(1, total_steps - learning_starts)
+                    lr = self.lr + min(1., progress) * (min_lr - self.lr)
+                    self.DQN.set_lr(lr)
+
+            # Logging
+            if len(history) - logged >= log_interval:
+                logged = len(history)
+                recent = history[-log_interval:]
+                now = time.time()
+                sps = (step - last_log_step) / (now - last_log_time)
+                last_log_time, last_log_step = now, step
+                avg = lambda k: np.mean([h[k] for h in recent])
+                loss_str = (f"loss {float(loss_sum)/n_updates:.4f}, Q {float(q_sum)/n_updates:.2f}, "
+                            if n_updates else "")
+                print(f"{timedelta(seconds=int(now - start))} | step {step:>9} | games {len(history):>7} | "
+                      f"eps {self.epsilon:.3f} | reward {avg('reward'):7.2f} | "
+                      f"won {100*avg('won'):5.1f}% lost {100*avg('lost'):5.1f}% aborted {100*avg('aborted'):4.1f}% | "
+                      f"ghosts left {avg('ghosts_left'):.2f} | len {avg('length'):5.1f} | "
+                      f"{loss_str}lr {lr:.2e} | {sps:.0f} steps/s", flush=True)
+                loss_sum, q_sum, n_updates = 0., 0., 0
+
+            # Checkpoints
+            if step >= next_save:
+                next_save += save_interval
+                self.save(str(save_dir / f"pacman_dqn_{step}.pth"))
+                pd.DataFrame(history).to_csv(save_dir / "pacman_dqn_training_log.csv", index=False)
+
+        self.save(str(save_dir / "pacman_dqn_final.pth"))
+        pd.DataFrame(history).to_csv(save_dir / "pacman_dqn_training_log.csv", index=False)
+        print(f"Training done: {step} steps, {len(history)} games, {timedelta(seconds=int(time.time() - start))}")
+        return history
 
     def save(self, filename):
         self.DQN.save(filename)
         
     def load(self, filename):
         self.DQN.load(filename)
+        # If the checkpoint had another architecture the network was rebuilt
+        self.input_shape = self.DQN.input_shape
 
 
 
@@ -421,12 +431,14 @@ class A2C_PacmanAgent(PacmanAgent):
             
     
     def select_action(self, state, stockastic=False, env_idx=0):
-        logit, value = self.A2C.a2c_net(state)
-        probs = F.softmax(logit, dim=-1)
+        # No gradient needed here: the losses are recomputed in A2C.evaluate_actions()
+        with torch.no_grad():
+            logit, value = self.A2C.a2c_net(state.to(self.A2C.device))
+            probs = F.softmax(logit, dim=-1)
         #print(f"logit: {logit}. probs: {probs}")
         
         if stockastic:
-            action_idx = probs.multinomial(num_samples=1).data[0,0]
+            action_idx = probs.multinomial(num_samples=1)[0,0].item()
         else:
             action_idx = torch.argmax(probs).item()
             

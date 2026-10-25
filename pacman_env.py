@@ -394,19 +394,18 @@ class PacmanEnvironment:
         # current percentage of power
         p = float(self.power_credit) / self.max_power_credit
 
-        for i in range(rows):
-            for j in range(columns):
-                if (i,j) == self.current_pacman_pos:
-                    rgb[i,j] = [0., 0., 1., 0.] # Blue pacman 
-                elif (i,j) in ghosts_pos:
-                    r = (1. - p)**2
-                    rgb[i,j] = [r, 0., 0., p] 
-                elif (i,j) in self.cookies:
-                    rgb[i,j] = [0., 1., 0., 0.] # Green cookie
-                elif (i,j) in self.power_cookies:
-                    rgb[i,j] = [0., 1., 1., 0.] # Blueish cookie
-                elif (i,j) in self.visited_pos:
-                    rgb[i,j] = [1., 1., 1., 0.] # White cells
+        # Paint from lowest to highest priority (later layers overwrite earlier ones):
+        # visited cells < power cookies < cookies < ghosts < pacman.
+        # (Vectorised version of a per-cell loop: same image, much faster.)
+        def paint(positions, color):
+            if positions:
+                ii, jj = zip(*positions)
+                rgb[list(ii), list(jj)] = color
+        paint(self.visited_pos, [1., 1., 1., 0.])      # White cells
+        paint(self.power_cookies, [0., 1., 1., 0.])    # Blueish cookie
+        paint(self.cookies, [0., 1., 0., 0.])          # Green cookie
+        paint(ghosts_pos, [(1. - p)**2, 0., 0., p])    # Ghosts (red fades with power)
+        paint([self.current_pacman_pos], [0., 0., 1., 0.]) # Blue pacman 
 
         # First and last rows are removed since they are the upper and lowerborders
         rgb_del = np.delete(rgb, [0, -1], axis=0)

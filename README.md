@@ -76,6 +76,35 @@ pacman_conf = PacmanConf(playground = pacman_map3,
                          penalty_per_ghost = -5)
 ```
 
+### GPU
+
+Both agents automatically run on a CUDA GPU (or Apple Silicon `mps`) when one is available,
+and fall back to the CPU otherwise. A device can be forced with the `device` argument
+(e.g. `DQN_PacmanAgent(envs, device="cpu")`).
+
+### DQN
+
+The DQN agent combines the improvements that matter most in practice:
+- **Double DQN** targets (the online network picks the next action, the target network evaluates it),
+- a **dueling** network $Q(s,a) = V(s) + A(s,a) - \overline{A}(s,\cdot)$ whose convolutions keep the full board resolution,
+- **3-step returns**, which propagate the sparse rewards (eating a ghost, winning) much faster,
+- a slowly moving (Polyak, $\tau = 0.005$) **target network**,
+- **reward scaling** (×0.1) so that the TD errors stay in the range where the Huber loss works well,
+- 2 stacked frames, so that the network can see in which direction the ghosts move.
+
+Training is driven by environment steps: all the environments move in lockstep, the actions for
+all of them come from a single batched forward pass, finished games restart immediately, and
+the network is updated after every move (`train_freq=1`, i.e. each transition is replayed about
+8 times with 16 environments and batches of 128). On a CPU, `train_freq=2` halves the cost.
+Statistics (rewards, win/loss rates, ghosts left, ...) for every game are saved in
+`./Tmp/pacman_dqn_training_log.csv`.
+
+To train it, uncomment `dqn_training()` in `pacman_training.py`.
+
+Without a local GPU, the notebooks `./Tools/train_dqn_kaggle.ipynb` and
+`./Tools/train_dqn_colab.ipynb` train the DQN agent on a free Kaggle or Google Colab GPU,
+save checkpoints regularly, and can resume a previous training.
+
 With the ipython notebook `./Tools/plottings.ipynb` it is possible to visualize 
 the progress of the training. Below is an example of the plotting of the training
 evolution.

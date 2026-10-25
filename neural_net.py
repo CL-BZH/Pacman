@@ -6,9 +6,59 @@ Created on Sat Apr 27 20:49:52 2024
 @author: chris
 """
 
-import torch 
-import torch.nn as nn  
+import torch
+import torch.nn as nn
 from torch.autograd import Variable
+
+
+def get_device(device=None):
+    '''
+    Return the torch device to use: CUDA if available, then Apple MPS, else CPU.
+    A device (or its name) can be forced with the 'device' argument.
+    '''
+    if device is not None:
+        return torch.device(device)
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = True
+        return torch.device("cuda")
+    if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
+class DuelingCNN(nn.Module):
+    '''
+    Q-network for DQN.
+    The board is small (9 x 13 once borders are removed), so the convolutions
+    keep the full resolution (stride 1, padding 1): a stride-2 convolution
+    blurs the exact cell positions of Pacman, the ghosts and the cookies,
+    which is the information the agent needs most.
+    The output uses the dueling decomposition Q(s,a) = V(s) + A(s,a) - mean_a A(s,a)
+    (Wang et al., 2016), which learns state values faster when many actions
+    have similar values (very common in Pacman corridors).
+    '''
+    def __init__(self, input_shape, n_actions, channels=(32, 64, 32), hidden=256):
+        super().__init__()
+        self.input_shape = input_shape
+        self.n_actions = n_actions
+        in_channels = input_shape[0]
+        layers = []
+        for c in channels:
+            layers += [nn.Conv2d(in_channels, c, kernel_size=3, stride=1, padding=1), nn.ReLU()]
+            in_channels = c
+        self.features = nn.Sequential(*layers, nn.Flatten())
+        with torch.no_grad():
+            n_flat = self.features(torch.zeros(1, *input_shape)).shape[1]
+        self.fc = nn.Sequential(nn.Linear(n_flat, hidden), nn.ReLU())
+        self.value = nn.Linear(hidden, 1)
+        self.advantage = nn.Linear(hidden, n_actions)
+
+    def forward(self, state):
+        x = self.fc(self.features(state))
+        v = self.value(x)
+        a = self.advantage(x)
+        return v + a - a.mean(dim=1, keepdim=True)
+
 
 # Creating the architecture of the Convolutional Neural Network
 

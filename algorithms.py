@@ -6,8 +6,8 @@ Created on Sat Apr 27 20:45:39 2024
 @author: chris
 """
 
-from neural_net import CNN
-from memories import ReplayMemory, RolloutMemory
+from neural_net import CNN, DuelingCNN, get_device
+from memories import ReplayMemory, RolloutMemory, NStepReplayBuffer
 import torch 
 import torch.nn as nn  
 import torch.nn.functional as F  
@@ -18,108 +18,109 @@ from torch.autograd import Variable
 # Implementing Deep Q-Learning
 
 class DQN:
-    def __init__(self, input_shape, n_actions, gamma, initial_lr, initial_tau):
+    '''
+    Deep Q-Network with the improvements that matter most in practice:
+      - Double DQN targets (van Hasselt et al., 2016): the online network picks
+        the next action, the target network evaluates it. Removes the
+        systematic over-estimation of the max operator.
+      - Dueling architecture (see neural_net.DuelingCNN).
+      - n-step returns (default n=3): rewards propagate n times faster, which
+        helps a lot with the sparse "win"/"eat ghost" rewards.
+      - Polyak-averaged target network with a small tau (default 0.005),
+        i.e. a target that moves slowly enough to stabilise learning.
+      - Reward scaling (default x0.1) so that TD errors stay in the range
+        where the Huber loss and Adam behave well.
+      - Everything runs on GPU when available.
+    '''
+    def __init__(self, input_shape, n_actions, gamma=0.99, initial_lr=2.5e-4, initial_tau=0.005,
+                 batch_size=128, buffer_capacity=200_000, n_envs=1, n_step=3,
+                 double=True, network="dueling", reward_scale=0.1, max_grad_norm=10.,
+                 device=None):
+        self.device = get_device(device)
         self.gamma = gamma
         self.lr = initial_lr
-        self.batch_size = 32
-        self.input_shape = input_shape
-        self.policy_net = CNN(self.batch_size, input_shape, n_actions)
-        self.target_net = CNN(self.batch_size, input_shape, n_actions)
-        self.memory = ReplayMemory(capacity = self.batch_size * 1000) 
-        #self.optimizer = optim.Adam(params = self.policy_net.parameters(), lr=initial_lr)
-        self.optimizer = optim.RMSprop(params = self.policy_net.parameters(), lr=initial_lr, eps=1e-5, alpha=0.99)
         self.tau = initial_tau
-            
+        self.batch_size = batch_size
+        self.input_shape = input_shape
+        self.n_actions = n_actions
+        self.double = double
+        self.reward_scale = reward_scale
+        self.max_grad_norm = max_grad_norm
+        self._build(network)
+        self.memory = NStepReplayBuffer(buffer_capacity, input_shape, n_envs,
+                                        n_step=n_step, gamma=gamma, device=self.device)
+
+    def _build(self, network):
+        self.network = network
+        if network == "dueling":
+            make = lambda: DuelingCNN(self.input_shape, self.n_actions)
+        elif network == "legacy":
+            # Original architecture (to load old checkpoints)
+            make = lambda: CNN(self.batch_size, self.input_shape, self.n_actions)
+        else:
+            raise ValueError(f"Unknown network '{network}'")
+        self.policy_net = make().to(self.device)
+        self.target_net = make().to(self.device)
+        self.target_net.load_state_dict(self.policy_net.state_dict())
+        self.target_net.eval()
+        for p in self.target_net.parameters():
+            p.requires_grad_(False)
+        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.lr, eps=1.5e-4)
+
     def save(self, filename):
         torch.save(self.policy_net.state_dict(), filename)
 
     def load(self, filename):
-        self.policy_net.load_state_dict(torch.load(filename))
-        self.target_net.load_state_dict(torch.load(filename))
-        
-    def get_next_state_qvalues(self, batch_next_states, game_over):
-        
-        #print(f"batch_next_states: {batch_next_states}.\nGame over: {game_over}")
+        state_dict = torch.load(filename, map_location=self.device)
+        # Checkpoints made with the original CNN have 'fc2' as output layer
+        network = "legacy" if "fc2.weight" in state_dict else "dueling"
+        if network != self.network:
+            self._build(network)
+        self.policy_net.load_state_dict(state_dict)
+        self.target_net.load_state_dict(state_dict)
 
-        non_final_next_states = torch.cat([s for (s, f) in zip(batch_next_states, game_over)
-                                           if f is False])
+    def set_lr(self, lr):
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] = lr
 
-        #print(f"non_final_next_states: {non_final_next_states}.")
-        
-        next_states_values = torch.zeros(self.batch_size)
+    @torch.no_grad()
+    def qvalues(self, states):
+        '''Q-values of a batch of states (numpy array or tensor).'''
+        if not torch.is_tensor(states):
+            states = torch.from_numpy(states)
+        return self.policy_net(states.to(self.device, dtype=torch.float32))
+
+    def learn(self):
+        '''
+        One gradient step on a mini-batch sampled from the replay memory.
+        Returns (loss, mean predicted Q) as detached tensors for monitoring
+        (no .item() here, so the GPU is not synchronised at every step).
+        '''
+        states, actions, returns, next_states, dones, discounts = self.memory.sample(self.batch_size)
+
+        q = self.policy_net(states).gather(1, actions.unsqueeze(1)).squeeze(1)
+
         with torch.no_grad():
-            qvalues = self.target_net(non_final_next_states)
-            #print(f"qvalues: {qvalues}.")
-            #print(f"qvalues max: {qvalues.max(1)[0]}.")
-            mask = ~torch.tensor(game_over)
-            #print(f"mask: {mask}")
-            next_states_values[mask] = qvalues.max(1)[0]
-            
-        #print(f"next_states_values: {next_states_values}.")
-        return next_states_values.detach() #.squeeze(-1)
+            next_q_target = self.target_net(next_states)
+            if self.double:
+                next_actions = self.policy_net(next_states).argmax(dim=1, keepdim=True)
+                next_q = next_q_target.gather(1, next_actions).squeeze(1)
+            else:
+                next_q = next_q_target.max(dim=1)[0]
+            targets = returns * self.reward_scale + discounts * (1. - dones) * next_q
 
-    
-    def learn(self, batch_states, batch_actions, batch_rewards, batch_next_states, game_over):
-        '''
-        This function compute the temporal difference, and accordingly the loss,
-        and update the weights with our optimizer in order to reduce that loss.
-        parameters:
-            batch_states: A batch of input states.
-            batch_actions: A batch of actions played.
-            batch_rewards: A batch of the rewards received.
-            batch_next_states: A batch of the next states reached.
-            game_over: A batch of booleans that indicates is the game ended
-        '''
-        
-        #print(f"batch_states: {batch_states}.")
-        #print(f"batch_actions: {batch_actions}.")
-        
-        batch_states = torch.cat(batch_states)
-        batch_actions = torch.stack(batch_actions)
-        batch_rewards = torch.cat(batch_rewards)
-
-        #print(f"batch_states: {batch_states}. shape: {batch_states.shape}")
-        #print(f"batch_actions: {batch_actions}. shape: {batch_actions.shape}")
-        #print(f"batch_rewards: {batch_rewards}. shape: {batch_rewards.shape}")
-        
-        # State-action values for the batch
-        batch_outputs = self.policy_net(batch_states)
-        #print(f"batch_outputs: {batch_outputs}. shape: {batch_outputs.shape}")
-
-        # Selection of each output corresponding to the actions indexes
-        batch_outputs = batch_outputs.gather(1, batch_actions)
-        #print(f"selected batch_outputs: {batch_outputs}. shape: {batch_outputs.shape}")
-        
-        next_states_values = self.get_next_state_qvalues(batch_next_states, game_over)
-
-        # Compute the expected state action values
-        batch_targets = batch_rewards + self.gamma * next_states_values
-        #print(f"batch_targets = {batch_targets}. shape: {batch_targets.shape}")
-        
-        # Update the model with gradiant descent
-        self.optimizer.zero_grad() #  Put back gradient to 0
-        td_loss = F.smooth_l1_loss(batch_outputs, batch_targets.unsqueeze(1))
-        td_loss.backward()
-        # gradient-clipping
-        nn.utils.clip_grad_norm_(self.policy_net.parameters(), 0.6)
-        #torch.nn.utils.clip_grad_value_(self.policy_net.parameters(), 100)
+        loss = F.smooth_l1_loss(q, targets)
+        self.optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        nn.utils.clip_grad_norm_(self.policy_net.parameters(), self.max_grad_norm)
         self.optimizer.step()
-        
-        # Update the target net
-        # θ′ ← τ θ + (1 − τ )θ′
-        target_net_state_dict = self.target_net.state_dict()
-        policy_net_state_dict = self.policy_net.state_dict()
-        for key in policy_net_state_dict:
-            target_net_state_dict[key] = policy_net_state_dict[key]*self.tau + target_net_state_dict[key]*(1-self.tau)
-        self.target_net.load_state_dict(target_net_state_dict)
-        #self.tau = 0.05
-        self.tau = 0.1
 
-    def update(self):
-        if len(self.memory.memory) > 10*self.batch_size:
-            batch_states, batch_actions, batch_rewards, batch_next_states, game_over = self.memory.sample(self.batch_size)
-            #print(f"{batch_states, batch_actions, batch_rewards, batch_next_states, game_over}")
-            self.learn(batch_states, batch_actions, batch_rewards, batch_next_states, game_over)
+        # Polyak update of the target net: θ′ ← τ θ + (1 − τ) θ′
+        with torch.no_grad():
+            for p_t, p in zip(self.target_net.parameters(), self.policy_net.parameters()):
+                p_t.lerp_(p, self.tau)
+
+        return loss.detach(), q.mean().detach()
 
 
 
@@ -127,7 +128,8 @@ class DQN:
 # Implementing Advantage Actor-Critic
 
 class A2C:
-    def __init__(self, input_shape, n_actions, n_steps, n_envs, gamma, initial_lr):
+    def __init__(self, input_shape, n_actions, n_steps, n_envs, gamma, initial_lr, device=None):
+        self.device = get_device(device)
         self.n_steps = n_steps
         self.n_envs = n_envs
         self.entropy_coef = 0.03 #0.01
@@ -137,7 +139,7 @@ class A2C:
         self.lr = initial_lr
         self.input_shape = input_shape
         
-        self.a2c_net = CNN(1, input_shape, n_actions, 1)
+        self.a2c_net = CNN(1, input_shape, n_actions, 1).to(self.device)
 
         self.memory = [RolloutMemory(n_steps, input_shape) for _ in range(n_envs)]
         #self.optimizer = optim.Adam(params = self.a2c_net.parameters(), lr=initial_lr)
@@ -152,7 +154,7 @@ class A2C:
 
 
     def load(self, filename):
-        self.a2c_net.load_state_dict(torch.load(filename))
+        self.a2c_net.load_state_dict(torch.load(filename, map_location=self.device))
     
     
     def evaluate_actions(self, state, action):
@@ -180,13 +182,14 @@ class A2C:
         next_value_pred = 0
         if end == False:
             with torch.no_grad():
-                _, next_value_pred = self.a2c_net(Variable(memory.get_last_state())) #.view(-1, *self.input_shape))
-                next_value_pred = next_value_pred.data
+                _, next_value_pred = self.a2c_net(memory.get_last_state().to(self.device))
+                next_value_pred = next_value_pred.cpu()
 
-        returns = memory.calc_nsteps_returns(next_value_pred, self.gamma)
+        returns = memory.calc_nsteps_returns(next_value_pred, self.gamma).to(self.device)
 
         # Get state-action pairs
         states, actions = memory.get_s_a()
+        states, actions = states.to(self.device), actions.to(self.device)
         
         logit, action_log_probs, values, entropy = self.evaluate_actions(states, actions)
 
