@@ -17,6 +17,7 @@ python pacman_play.py -n 1000                         # statistics over 1000 gam
 python pacman_play.py -c Trainings/A2C/my_agent.pth   # another checkpoint
 python pacman_play.py -a dqn                          # the DQN agent (./Tmp/pacman_dqn_final.pth)
 python pacman_play.py --speed 0.3 --wait 10           # slower display
+python pacman_play.py -n 200 --show-losses            # replay up to 5 of the lost games with display
 ```
 
 The game configuration (board, ghosts, rewards) is the one defined in `pacman_training.py`,
@@ -30,24 +31,38 @@ With one game (`-n 1`, the default), the game is displayed as in the example bel
 
 With more games, they are played without display and statistics are provided at the end.
 
-This is an example of output obtained with `-n 1000` with the (original) A2C agent.
+This is the output obtained with `-n 1000` with the current A2C agent (trained with PPO, see below).
 ```bash
-Pacman won 79.40% of the games
+Pacman won 96.60% of the games
 Number of game aborted:
 	with 0 ghost: 0
 	with 1 ghost: 0
 	with 2 ghost: 0
 Percentage of games with
-	0 ghost: 51.4
-	1 ghost: 28.2
-	2 ghost: 20.4
-Average number of ghost per game: 0.69
+	0 ghost: 93.6
+	1 ghost: 3.3
+	2 ghost: 3.1
+Average number of ghost per game: 0.095
 Percentage of power cookies eaten per game:
-	0 power cookies: 9.9
-	1 power cookies: 6.7
-	2 power cookies: 83.4
-Average number of power cookies eaten per game: 1.735
+	0 power cookies: 2.9
+	1 power cookies: 0.3
+	2 power cookies: 96.8
+Average number of power cookies eaten per game: 1.939
 ```
+
+For comparison, the original A2C agent (stride-2 network, RGB input with 1 frame, n-step returns,
+no PPO) obtained:
+
+| | Original A2C | Current A2C (PPO) |
+|---|---|---|
+| Games won | 79.4% | 96.6% |
+| Games ending with 0 ghost left | 51.4% | 93.6% |
+| Games with both power cookies eaten | 83.4% | 96.8% |
+| Average number of ghosts left | 0.69 | 0.095 |
+
+Each game is played with its own random seed (printed at the end), so a set of games can be played
+again identically with `--seed`. With `--show-losses N`, the games are first played without display,
+then up to `N` of the lost games are replayed with display, to see how Pacman loses.
 
 ## To train the model
 

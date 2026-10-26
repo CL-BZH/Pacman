@@ -13,6 +13,7 @@ Examples:
     python pacman_play.py                       # display one game of ./Tmp/pacman_a2c_final.pth
     python pacman_play.py -n 1000               # statistics over 1000 games
     python pacman_play.py -a dqn -c my_dqn.pth  # DQN agent with another checkpoint
+    python pacman_play.py -n 200 --show-losses  # replay (with display) up to 5 lost games out of 200
     python pacman_play.py --help                # all the options
 """
 
@@ -132,7 +133,10 @@ def parse_args():
     parser.add_argument("--max-moves", type=int, default=800,
                         help="games longer than this are aborted")
     parser.add_argument("--seed", type=int, default=None,
-                        help="random seed (to replay the same games)")
+                        help="random seed (to replay the same games); game i uses seed + i")
+    parser.add_argument("--show-losses", type=int, nargs="?", const=5, default=0, metavar="N",
+                        help="after playing the games without display, replay up to N of the "
+                             "lost games with display (N = 5 if not given)")
     return parser.parse_args()
 
 
@@ -161,10 +165,8 @@ def print_statistics(n_games, lost, abort_count, ghost_count, eaten_power_cookie
 
 def main():
     args = parse_args()
-    if args.seed is not None:
-        random.seed(args.seed)
-        np.random.seed(args.seed)
-        torch.manual_seed(args.seed)
+    # Each game gets its own seed so that any game can be replayed identically
+    base_seed = args.seed if args.seed is not None else random.SystemRandom().randrange(10**6)
 
     checkpoint = args.checkpoint or f"./Tmp/pacman_{args.agent}_final.pth"
     if not os.path.isfile(checkpoint):
@@ -183,7 +185,8 @@ def main():
     agent.load(checkpoint)
     print(f"Loaded {checkpoint}")
 
-    display = args.display or args.games == 1
+    display = (args.display or args.games == 1) and not args.show_losses
+    lost_games = [] # (game number, seed, start-position weights) of the lost games
     lost = []
     abort_count = defaultdict(int)
     ghost_count = defaultdict(int)
@@ -191,8 +194,13 @@ def main():
 
     for i in range(args.games):
         print(f'\r{i+1}', end='\r', flush=True)
+        # The agent's start-position weights change at every game: keep them to replay the game
+        weights = agent.weights.copy()
+        set_seed(base_seed + i)
         has_lost_game, aborted, n_ghost, n_eaten_power_cookies = play_game(
             env, agent, stockastic, display, wait=args.wait, speed=args.speed, max_moves=args.max_moves)
+        if has_lost_game:
+            lost_games.append((i + 1, base_seed + i, weights, env.n_steps))
         if aborted == False:
             lost.append(has_lost_game)
         ghost_count[n_ghost] += 1.
@@ -206,6 +214,36 @@ def main():
     else:
         result = "aborted" if abort_count[n_ghost] else ("lost" if has_lost_game else "won")
         print(f"Game {result}. Ghosts left: {n_ghost}. Power cookies eaten: {n_eaten_power_cookies}.")
+    print(f"Seed: {base_seed} (use --seed {base_seed} to play the same games again)")
+
+    if args.show_losses:
+        replay_lost_games(env, agent, stockastic, lost_games[:args.show_losses], len(lost_games), args)
+
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+
+def replay_lost_games(env, agent, stockastic, lost_games, n_lost, args):
+    '''
+    Replay lost games with display. A game is replayed identically by restoring
+    its random seed and the agent's start-position weights.
+    '''
+    if not lost_games:
+        print("No game lost: nothing to replay.")
+        return
+    print(f"{n_lost} game(s) lost. Replaying {len(lost_games)} of them "
+          "(close the window at the end of a game to see the next one).")
+    for game, seed, weights, n_steps in lost_games:
+        print(f"Game {game} (seed {seed}): lost after {n_steps} moves")
+        agent.weights = weights.copy()
+        set_seed(seed)
+        has_lost_game, _, _, _ = play_game(env, agent, stockastic, display=True, wait=args.wait,
+                                           speed=args.speed, max_moves=args.max_moves)
+        if not has_lost_game or env.n_steps != n_steps:
+            print("\tWarning: the replayed game differs from the original one.")
 
 
 if __name__ == "__main__":

@@ -76,6 +76,9 @@ class PacmanEnvironment:
         self.fill_map(start_pacman_pos, start_ghosts_pos)
         self.map_actions = np.array(self._init_map_actions())
         self.image_channels = 4 # RGB channels + 1
+        # Random generator used only for drawing (see colormap()), so that displaying
+        # a game does not change the random numbers used by the game itself
+        self._display_rng = random.Random()
 
         
     def reset(self, pacman_start_pos: Optional[Pos]=None, ghosts_start_pos: Optional[List[Pos]]=None):
@@ -524,8 +527,8 @@ class PacmanEnvironment:
                             color = ghosts_color[idx]
                             heading = ghosts_heading[idx]
                             # shift a bit
-                            xs = x + (random.random() - 0.5) * 0.3
-                            ys = y + (random.random() - 0.5) * 0.3
+                            xs = x + (self._display_rng.random() - 0.5) * 0.3
+                            ys = y + (self._display_rng.random() - 0.5) * 0.3
                             ghosts.append((xs, ys, color, heading))
                     else:
                         idx = ghosts_idx[0]
@@ -729,7 +732,7 @@ class PacmanEnvironment:
                     
                 ghost = mpatches.FancyBboxPatch((x,y), 0.2, 0.2, ec="black", color=color,
                                                 boxstyle=mpatches.BoxStyle("Roundtooth", pad=0.3))
-                eyes_color = np.random.choice(ghost_eye_color)
+                eyes_color = self._display_rng.choice(ghost_eye_color)
                 ghost_eye_left = mpatches.Circle((x-0.05,y+0.15), 0.07, ec="none", color=eyes_color)
                 ghost_eye_right = mpatches.Circle((x+0.2,y+0.15), 0.07, ec="none", color=eyes_color)
                 
