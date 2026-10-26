@@ -47,16 +47,15 @@ def play_game(env, agent, stockastic=False, display=False):
     rewards = []
     aborted = False
     
+    state = agent.current_state[0]
     while env.end == False:
-        rgb = agent.pacman_envs[0].rgb_image
-        np_img = agent.image_processing(rgb)
-        state = agent.image_to_state(np_img)
         if env.ghosts != []:
             _, action = agent.select_action(state, stockastic=False)
         else:
             _, action = agent.select_action(state, stockastic=stockastic)
 
         reward = env.step(action)
+        state = agent.observe(0)
         agent.episode_rewards.append(reward)
         rewards.append(reward)
         
@@ -111,19 +110,13 @@ pacman_conf = PacmanConf(playground = pacman_map3,
 
 env = PacmanEnvironment(pacman_conf)#, start_ghosts_pos=[(5,6), (5,8)])
 
-agent = A2C_PacmanAgent([env], grayscale=False, n_frames=1)
-#agent.load("./Trainings/A2C/Config_1/states_dict_220000.pth")
-#agent.load("./Trainings/A2C/Config_2/states_dict_60000.pth")
-agent.load("./Trainings/A2C/Config_3/states_dict_60000.pth")
-#agent.load("./Tmp/pacman_color_a2c_60000.pth")
+agent = A2C_PacmanAgent([env])  # n_frames must match the training (default 2)
+agent.load("./Tmp/pacman_a2c_final.pth")
 
 stockastic = True # When there is no ghost the action is stochastic (else argmax)
 
-# agent = DQN_PacmanAgent([env], grayscale=False, n_frames=2) # n_frames must match the training
+# agent = DQN_PacmanAgent([env], n_frames=2) # n_frames must match the training
 # agent.load("./Tmp/pacman_dqn_final.pth")
-# # Old checkpoints (original network, 1 frame) are detected and loaded automatically:
-# #agent = DQN_PacmanAgent([env], grayscale=False, n_frames=1)
-# #agent.load("./Trainings/DQN/pacman_color_dqn_215000.pth")
 # agent.epsilon = 0.
 # stockastic = False
   

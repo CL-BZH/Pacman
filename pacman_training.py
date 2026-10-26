@@ -16,8 +16,6 @@ from pacman_agents import DQN_PacmanAgent
 from pacman_agents import A2C_PacmanAgent
 import time
 from datetime import timedelta
-import pandas as pd
-import numpy as np
 import pathlib
 from pathlib import Path
 
@@ -36,40 +34,46 @@ pacman_conf = PacmanConf(playground = pacman_map3,
                             win_reward = 30,
                             penalty_per_ghost = -5)
 
-def a2c_training(state_dict=None):
-    n_envs = 21
-    n_steps = 19
+def a2c_training(state_dict=None, total_steps=20_000_000):
+    n_envs = 16
+    n_steps = 128             # rollout length per environment (update on n_envs * n_steps transitions)
+    n_frames = 2              # 2 stacked frames: the direction in which the ghosts move is visible
     
-    initial_lr = 0.0004
-    min_lr = 0.00001
-    episodes = 300000
+    initial_lr = 2.5e-4
+    min_lr = 2.5e-5           # linear decay of the learning rate down to min_lr
+    ppo_epochs = 4            # PPO: 4 passes over each rollout (1 pass + 1 mini-batch = plain A2C)
+    n_minibatches = 4
+    entropy_coef = 0.03       # entropy bonus (0.01 made the policy deterministic too early)
+    curriculum_fraction = 0.2 # ghosts' aggressiveness ramps from 30% to 100% over the first 20% of the training
+    curriculum_start = 0.3
     
-    a2c_pacman_envs = []
-    for _ in range(n_envs):
-        a2c_pacman_envs.append(PacmanEnvironment(pacman_conf))#, start_ghosts_pos=[(5,6), (5,8)]))
+    a2c_pacman_envs = [PacmanEnvironment(pacman_conf) for _ in range(n_envs)]
     
-    a2c_pacman_agent = A2C_PacmanAgent(a2c_pacman_envs, initial_lr=initial_lr, grayscale=False, n_frames=1, n_steps=n_steps)
+    a2c_pacman_agent = A2C_PacmanAgent(a2c_pacman_envs, gamma=0.99, initial_lr=initial_lr, n_frames=n_frames,
+                                       gae_lambda=0.95, entropy_coef=entropy_coef, ppo_epochs=ppo_epochs,
+                                       n_minibatches=n_minibatches, clip_eps=0.2, reward_scale=0.1,
+                                       symmetric=True)
     if state_dict is not None:
         a2c_pacman_agent.load(state_dict)
+        curriculum_fraction = 0.  # already trained: no curriculum
     
     start = time.time()
-    a2c_pacman_agent.run_episodes(episode_max_length=600, total_episodes=episodes, min_lr=min_lr)
+    a2c_pacman_agent.run_episodes(total_steps=total_steps, n_steps=n_steps, episode_max_length=1000,
+                                  min_lr=min_lr, curriculum_fraction=curriculum_fraction,
+                                  curriculum_start=curriculum_start, log_interval=500,
+                                  save_interval=1_000_000, save_dir="./Tmp")
     end = time.time()
     print(f"Elapsed time: {timedelta(seconds=end-start)}")
-    path = './Trainings/A2C/'
-    new_dir_name = f"{end}"
-    new_dir = pathlib.Path(path, new_dir_name)
-    new_dir.mkdir()
-    pth = path + new_dir_name + "/" + "state_dict.pth"
-    a2c_pacman_agent.save(pth)
-    conf_file = new_dir / 'config.txt'
-    t1 = f"pacman_conf = {pacman_conf}"
-    t2 = f"n_envs = {n_envs}"
-    t3 = f"n_steps = {n_steps}"
-    t4 = f"initial_lr = {initial_lr}"
-    t5 = f"min_lr = {min_lr}"
-    t6 = f"episodes = {episodes}"
-    conf_file.write_text("\n".join([t1,t2,t3,t4,t5,t6]))
+
+    new_dir = pathlib.Path('./Trainings/A2C/', f"{end}")
+    new_dir.mkdir(parents=True)
+    a2c_pacman_agent.save(str(new_dir / "state_dict.pth"))
+    (new_dir / 'config.txt').write_text("\n".join([
+        f"pacman_conf = {pacman_conf}", f"n_envs = {n_envs}", f"n_steps = {n_steps}",
+        f"n_frames = {n_frames}", f"initial_lr = {initial_lr}", f"min_lr = {min_lr}",
+        f"ppo_epochs = {ppo_epochs}", f"n_minibatches = {n_minibatches}",
+        f"entropy_coef = {entropy_coef}", f"curriculum_fraction = {curriculum_fraction}",
+        f"curriculum_start = {curriculum_start}", f"total_steps = {total_steps}"]))
     
     
 def dqn_training(state_dict=None, total_steps=5_000_000):
@@ -115,7 +119,6 @@ if __name__ == "__main__":
     
     Path("./Tmp").mkdir(parents=True, exist_ok=True)
     
-    #a2c_training("./Trainings/A2C/Config_2/states_dict_55000.pth")
     a2c_training()
     #dqn_training()
     

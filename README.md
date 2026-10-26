@@ -1,7 +1,7 @@
 # My own Pacman for Reinforcement Learning
 This depository contains the code of a Pacman game I wrote from scratch for testing reinforcement learning algorithms.
 
-Currently, 2 algorithms are implemented, DQN and A2C.
+Currently, 2 algorithms are implemented, DQN and A2C (trained with PPO updates by default).
 
 ## To run games
 
@@ -82,6 +82,26 @@ Both agents automatically run on a CUDA GPU (or Apple Silicon `mps`) when one is
 and fall back to the CPU otherwise. A device can be forced with the `device` argument
 (e.g. `DQN_PacmanAgent(envs, device="cpu")`).
 
+### A2C / PPO
+
+The actor-critic agent has the following features:
+- **Input**: instead of an RGB image, the state is made of feature planes
+  (`PacmanEnvironment.feature_image`): walls, cookies, power cookies, Pacman, one plane per ghost
+  (the ghosts have different aggressiveness, so the agent can tell them apart) and Pacman's remaining power.
+  Walls can no longer be confused with empty cells.
+- **2 stacked frames** (one stack per environment), so that the direction in which the ghosts move is visible.
+- **Network**: full-resolution convolutions shared by a policy head and a value head. Since the board
+  is left-right symmetric, the network is made exactly equivariant to this symmetry: the outputs for a
+  state and for its mirror image (with East and West swapped) are averaged. The agent cannot learn a
+  different behaviour on the two halves of the board, which is equivalent to doubling the training data.
+- **Advantages**: GAE($\lambda = 0.95$), normalised per mini-batch.
+- **Updates**: PPO clipped objective, 4 epochs of 4 mini-batches on each rollout of
+  16 environments × 128 steps. With `ppo_epochs=1` and `n_minibatches=1` the update is exactly A2C (with GAE).
+- **Curriculum**: the ghosts' aggressiveness starts at 30% of its configured value and reaches 100%
+  after 20% of the training.
+
+Statistics for every game are saved in `./Tmp/pacman_a2c_training_log.csv`.
+
 ### DQN
 
 The DQN agent combines the improvements that matter most in practice:
@@ -101,9 +121,9 @@ Statistics (rewards, win/loss rates, ghosts left, ...) for every game are saved 
 
 To train it, uncomment `dqn_training()` in `pacman_training.py`.
 
-Without a local GPU, the notebooks `./Tools/train_dqn_kaggle.ipynb` and
-`./Tools/train_dqn_colab.ipynb` train the DQN agent on a free Kaggle or Google Colab GPU,
-save checkpoints regularly, and can resume a previous training.
+Without a local GPU, the notebooks `./Tools/train_kaggle.ipynb` and `./Tools/train_colab.ipynb`
+train the A2C/PPO or the DQN agent on a free Kaggle or Google Colab GPU, save checkpoints
+regularly, and can resume a previous training.
 
 With the ipython notebook `./Tools/plottings.ipynb` it is possible to visualize 
 the progress of the training. Below is an example of the plotting of the training
@@ -142,10 +162,10 @@ Currently, two algorithms are defined, DQN and A2C.
 
 `ghost_agent.py` contains the class `PacmanGhost` that defines the ghosts and their behaviors.
 
-`memories.py` is where the classes for the Rollout memory (used in A2C) and for the 
-Replay memory (used for DQN) are implemented.
+`memories.py` contains the n-step replay memory used by DQN.
 
-`neural_net.py` is for the definition of the convolutional neural networks used in DQN and A2C.
+`neural_net.py` is for the definition of the convolutional neural networks used in DQN (`DuelingCNN`)
+and A2C (`ActorCriticCNN`), and for the selection of the device (GPU or CPU).
 
 `pacman_agents.py` is where to find the classes for the DQN and A2C agents
 
@@ -159,102 +179,42 @@ And we already talked about `pacman_play.py` and `pacman_train.py`.
 
 #### Agents (`pacman_agents.py`)
 
-`PacmanAgent` is the parent of all derived agents, `DQN_PacmanAgent` and `A2C_PacmanAgent`.\
-The function `run_episodes()` is used for the training.
+`PacmanAgent` is the parent of all derived agents, `DQN_PacmanAgent` and `A2C_PacmanAgent`.
+It builds the states (stacks of the last `n_frames` images of each environment, see
+`stacked_observation()`), chooses the start positions of new games (`reset_env()`), and
+provides `reset_episode()` and `observe()` to play games (see `pacman_play.py`).
 
-Let's have a look to the main steps in the case of **A2C**.\
-The most important part of the code is the loop that runs an episode in each environments.
-```Python
-            while True:
-                value_losses = []
-                policy_losses = []
-                
-                for env_idx in range(self.n_envs):
-                    if self.pacman_envs[env_idx].end == True:
-                        continue
-                    # Take up to n_steps in each environment
-                    for step in range(self.n_steps):
-                        self.take_action(env_idx)
+The function `run_episodes()` is used for the training. Both agents step all the environments
+in lockstep: the network chooses the actions for all the environments in a single batched forward
+pass, every environment performs one move, and finished games are restarted immediately.
+- `DQN_PacmanAgent` stores each transition in the replay memory and updates the network after each move.
+- `A2C_PacmanAgent` collects `n_steps` moves in every environment, computes the advantages, then updates the network.
 
-                        env = self.pacman_envs[env_idx]
-                        if env.end == True:
-                            lost_count += int(env.dead == True)
-                            ghost_count += len(env.ghosts)
-                            finished_games += 1
-                            break
+#### Algorithms (`algorithms.py`)
 
-                    value_loss, policy_loss = self.A2C.compute_losses(env_idx, step+1,
-                                                                      self.pacman_envs[env_idx].end)
-                    value_losses.append(value_loss)
-                    policy_losses.append(policy_loss)
-                
-                self.A2C.update(value_losses, policy_losses)
-```
-There, for each environment where the game is not finished, the agent takes up to `n` steps 
-(call to the local function `take_action()`). Once the `n` actions were taken (or the game ended), The value loss and the policy loss are computed (call to `A2C.compute_losses()` that is defined in `algorithms.py`). Then those losses collected from all the environments are passed to the A2C object for updating the network (call to `A2C.update()` that is defined in `algorithms.py`).
+##### About the A2C / PPO implementation
 
-Let's detail a bit the function `take_action()`.
-```Python
-    def take_action(self, env_idx):
-        # get the current state
-        state = self.current_state[env_idx]
-        
-        # Take action according to current policy
-        action_idx, action = self.select_action(state, stockastic=True,
-                                                env_idx=env_idx)
-    
-        reward = self.pacman_envs[env_idx].step(action)
-        self.episode_rewards.append(reward)
+`A2C.compute_gae()` computes the advantages with GAE:
+$$\delta_t = r_t + \gamma\,(1-d_t)\,V(s_{t+1}) - V(s_t), \qquad
+\hat{A}_t = \delta_t + \gamma\lambda\,(1-d_t)\,\hat{A}_{t+1}$$
+where $d_t = 1$ if the game ended after the action $a_t$. The value targets are $\hat{A}_t + V(s_t)$.
+For aborted (too long) games, the value of the reached state is added to the last reward, since the game did not really end.
 
-        # get the reached state
-        rgb = self.pacman_envs[env_idx].rgb_image
-        np_img = self.image_processing(rgb)
-        # Put in the format for Pytorch Conv2d
-        new_state = self.image_to_state(np_img)
-        
-        # Update current state
-        self.current_state[env_idx] = new_state
+`A2C.update()` minimises, on each mini-batch,
+$$\mathcal{L} = -\frac{1}{B}\sum_t \min\big(\rho_t \hat{A}_t,\ \mathrm{clip}(\rho_t, 1-\epsilon, 1+\epsilon)\,\hat{A}_t\big)
++ c_v \frac{1}{2B}\sum_t \big(\hat{A}_t + V_{old}(s_t) - V(s_t)\big)^2 - c_e\, \mathcal{H}(\pi)$$
+with $\rho_t = \pi(a_t|s_t) / \pi_{old}(a_t|s_t)$ and the advantages normalised over the mini-batch.
 
-        # Add a new entry in the rollout memory
-        self.A2C.memory[env_idx].insert(new_state,
-                                        torch.Tensor([action_idx]).type(torch.int64),
-                                        reward)
-```
-It first call `select_action()` which performs the following actions:
-1. the logits for the Qvalues of the 5 possible actions 
-(`East`, `West`, `North`, `South` `Idle`) and the state's value are obtained from the 
-call to `A2C.a2c_net()`
-2. then a softmax function is applied to the logits to get the policy probabilities
-$\pi(a|s)$
-3. the action is then selected using a multinomial law of parameter $\pi(a|s)$.
+##### About the DQN implementation
 
-After that, the action is passed to the environment (call to the environment `step()` function).\
-The environment then update the state and returns a reward. 
+`DQN.learn()` uses Double DQN n-step targets
+$$y = \sum_{k=0}^{m-1}\gamma^k r_{t+k} + \gamma^m (1-d)\, Q_{target}\big(s_{t+m}, \arg\max_a Q(s_{t+m}, a)\big)$$
+with the Huber loss, and updates the target network with $\theta' \leftarrow \tau\theta + (1-\tau)\theta'$.
 
-Lastly, the reached state, the action taken and the received reward are stored in the Rollout memory.
-
-#### Algorithms (`pacman_algorithms.py`)
-
-##### About A2C implementation
-
-The computation of the value and policy losses is done in the `A2C` class' function `compute_losses()`.
-<html>
+## TODO
 <ul>
-<li><p>For the policy the loss to compute is:
-<br/> <br/>
-<span class="math display">$$\mathcal{L}_{\pi} =
-- \frac{1}{k} \sum_{j=0}^{k-1} \delta_{t+j} \cdot
-log\;\pi(a_{t+j}|s_{t+j}) -  \eta \frac{1}{k}\sum_{j=0}^{k-1}\big( \delta_{t+j} \big)^2$$</span></p></li>
-<li><p>For the value function the loss to compute is:
-<br/> <br/> 
-<span class="math display">$$\mathcal{L}_{v} =
-\frac{1}{k}\sum_{j=0}^{k-1}\big( \delta_{t+j} \big)^2$$</span></p></li>
+<li> Code cleaning </li>
 </ul>
-</html>
-
-Where `k` is at most the number of steps `n` for the advantage computation. 
-(if the game ends before `n` steps are taken, then `k` is less than `n`)
-
 
 
 

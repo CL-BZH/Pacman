@@ -8,7 +8,6 @@ Created on Sat Apr 27 20:49:52 2024
 
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
 
 
 def get_device(device=None):
@@ -60,62 +59,52 @@ class DuelingCNN(nn.Module):
         return v + a - a.mean(dim=1, keepdim=True)
 
 
-# Creating the architecture of the Convolutional Neural Network
+class ActorCriticCNN(nn.Module):
+    '''
+    Actor-critic network for A2C/PPO: a full-resolution convolutional trunk
+    shared by a policy head (action logits) and a value head.
 
-class CNN(nn.Module):
-    def __init__(self, batch_size, input_shape, n_actions, sup=0):
+    If 'action_mirror' is given (permutation of the actions under a left-right
+    mirror of the board, e.g. East <-> West), the network is made exactly
+    equivariant to that symmetry: the outputs for the state and for its mirror
+    image are averaged,
+        logits(s) = (f(s) + P f(mirror(s))) / 2,  V(s) = (V(s) + V(mirror(s))) / 2.
+    The agent then cannot learn a different behaviour on the two halves of a
+    symmetric board, which is equivalent to doubling the training data.
+    '''
+    def __init__(self, input_shape, n_actions, channels=(32, 64, 32), hidden=256, action_mirror=None):
         super().__init__()
-        self.batch_size = batch_size
         self.input_shape = input_shape
-        self.n_actions = n_actions # Size of the output layer for the actions
-        self.sup = sup # Supplementary output layer
-        #print(f"CNN: input shape {self.input_shape}, output size: {self.n_actions}")
-        
-        in_channels=self.input_shape[0]
-        # Featurizing layers
-        self.features = nn.Sequential( 
-            nn.Conv2d(in_channels, 16, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(16, 16, kernel_size=3, stride=2),
-            nn.ReLU(),
-            #nn.Conv2d(16, 32, kernel_size=1, stride=1),
-            #nn.ReLU(),
-        )
-        self.fc1_in_size = self._feature_size()
-        
-        # Fully connected hidden layer
-        self.fc1 = nn.Sequential(
-            nn.Linear(self.fc1_in_size, 256),
-            nn.ReLU(),
-        )
-        # Fully connected output layer for the actions
-        self.fc2 = nn.Linear(256, self.n_actions)
+        self.n_actions = n_actions
+        in_channels = input_shape[0]
+        layers = []
+        for c in channels:
+            layers += [nn.Conv2d(in_channels, c, kernel_size=3, stride=1, padding=1), nn.ReLU()]
+            in_channels = c
+        self.features = nn.Sequential(*layers, nn.Flatten())
+        with torch.no_grad():
+            n_flat = self.features(torch.zeros(1, *input_shape)).shape[1]
+        self.fc = nn.Sequential(nn.Linear(n_flat, hidden), nn.ReLU())
+        self.policy = nn.Linear(hidden, n_actions)
+        self.value = nn.Linear(hidden, 1)
+        # Small initial policy weights: the initial policy is close to uniform
+        nn.init.orthogonal_(self.policy.weight, gain=0.01)
+        nn.init.zeros_(self.policy.bias)
+        if action_mirror is not None:
+            self.register_buffer("action_mirror", torch.as_tensor(action_mirror, dtype=torch.long))
+        else:
+            self.action_mirror = None
 
-        # If sup > 0, then add another output layer
-        if self.sup > 0:
-            self.fc3 = nn.Linear(256, self.sup)
+    def _forward(self, state):
+        x = self.fc(self.features(state))
+        return self.policy(x), self.value(x).squeeze(-1)
 
-    def _feature_size(self):
-        # For pytorch the number of channel comes first [B, C, H, W]
-        #(TensorFlow support channel last order [B, H, W, C])
-        x = Variable(torch.zeros(1, *self.input_shape))
-        #print(f"input x shape: {x.shape}")
-        x = self.features(x)
-        #print(f"conv out x shape: {x.shape}")
-        size = x.view(1, -1).size(1)
-        #print(f"x shape: {x.shape} size: {size}")
-        return size
-
-    # forward() is called in __call__ of nn.Module.
-    def forward(self, state): 
-        '''
-        Forward-propagates the signal inside the neural network
-        and returns the predicted Q-values.
-        '''
-        #print(f"CNN.forward({state.shape})")
-        x = self.features(state)
-        x = x.view(x.size(0), -1) # flattening the last convolutional layer into this 1D vector x
-        x = self.fc1(x)
-        if self.sup > 0: 
-            return self.fc2(x), self.fc3(x)
-        return self.fc2(x)
+    def forward(self, state):
+        '''Returns (logits [B, n_actions], values [B]).'''
+        if self.action_mirror is None:
+            return self._forward(state)
+        logits, values = self._forward(torch.cat([state, torch.flip(state, dims=[-1])]))
+        b = state.shape[0]
+        logits = (logits[:b] + logits[b:][:, self.action_mirror]) / 2
+        values = (values[:b] + values[b:]) / 2
+        return logits, values

@@ -6,14 +6,13 @@ Created on Sat Apr 27 20:45:39 2024
 @author: chris
 """
 
-from neural_net import CNN, DuelingCNN, get_device
-from memories import ReplayMemory, RolloutMemory, NStepReplayBuffer
+from neural_net import DuelingCNN, ActorCriticCNN, get_device
+from memories import NStepReplayBuffer
+import numpy as np
 import torch 
 import torch.nn as nn  
 import torch.nn.functional as F  
 import torch.optim as optim  
-from torch.autograd import Variable
-#from torchcontrib.optim import SWA
 
 # Implementing Deep Q-Learning
 
@@ -51,14 +50,10 @@ class DQN:
                                         n_step=n_step, gamma=gamma, device=self.device)
 
     def _build(self, network):
-        self.network = network
-        if network == "dueling":
-            make = lambda: DuelingCNN(self.input_shape, self.n_actions)
-        elif network == "legacy":
-            # Original architecture (to load old checkpoints)
-            make = lambda: CNN(self.batch_size, self.input_shape, self.n_actions)
-        else:
+        if network != "dueling":
             raise ValueError(f"Unknown network '{network}'")
+        self.network = network
+        make = lambda: DuelingCNN(self.input_shape, self.n_actions)
         self.policy_net = make().to(self.device)
         self.target_net = make().to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
@@ -72,10 +67,6 @@ class DQN:
 
     def load(self, filename):
         state_dict = torch.load(filename, map_location=self.device)
-        # Checkpoints made with the original CNN have 'fc2' as output layer
-        network = "legacy" if "fc2.weight" in state_dict else "dueling"
-        if network != self.network:
-            self._build(network)
         self.policy_net.load_state_dict(state_dict)
         self.target_net.load_state_dict(state_dict)
 
@@ -125,112 +116,129 @@ class DQN:
 
 
 
-# Implementing Advantage Actor-Critic
+# Implementing Advantage Actor-Critic (with PPO updates)
 
 class A2C:
-    def __init__(self, input_shape, n_actions, n_steps, n_envs, gamma, initial_lr, device=None):
+    '''
+    Actor-critic trained on rollouts of n_steps x n_envs transitions.
+
+    - Advantages: GAE(lambda) (Schulman et al., 2016), normalised per mini-batch.
+    - Updates: PPO clipped objective (Schulman et al., 2017) with 'ppo_epochs'
+      passes over the rollout split into 'n_minibatches' mini-batches.
+      With ppo_epochs=1 and n_minibatches=1 the probability ratio is always 1,
+      the clipping never acts, and the update is exactly A2C with GAE.
+    - Rewards are scaled by 'reward_scale' so values stay of order 1.
+    '''
+    def __init__(self, input_shape, n_actions, gamma=0.99, initial_lr=2.5e-4, gae_lambda=0.95,
+                 entropy_coef=0.03, value_loss_coef=0.5, max_grad_norm=0.5,
+                 ppo_epochs=4, n_minibatches=4, clip_eps=0.2, reward_scale=0.1,
+                 action_mirror=None, device=None):
         self.device = get_device(device)
-        self.n_steps = n_steps
-        self.n_envs = n_envs
-        self.entropy_coef = 0.03 #0.01
-        self.value_loss_coef = 0.5
-        self.max_grad_norm = 0.5
         self.gamma = gamma
         self.lr = initial_lr
+        self.gae_lambda = gae_lambda
+        self.entropy_coef = entropy_coef
+        self.value_loss_coef = value_loss_coef
+        self.max_grad_norm = max_grad_norm
+        self.ppo_epochs = ppo_epochs
+        self.n_minibatches = n_minibatches
+        self.clip_eps = clip_eps
+        self.reward_scale = reward_scale
         self.input_shape = input_shape
-        
-        self.a2c_net = CNN(1, input_shape, n_actions, 1).to(self.device)
+        self.a2c_net = ActorCriticCNN(input_shape, n_actions, action_mirror=action_mirror).to(self.device)
+        self.optimizer = optim.Adam(self.a2c_net.parameters(), lr=initial_lr, eps=1e-5)
 
-        self.memory = [RolloutMemory(n_steps, input_shape) for _ in range(n_envs)]
-        #self.optimizer = optim.Adam(params = self.a2c_net.parameters(), lr=initial_lr)
-        self.optimizer = optim.RMSprop(params = self.a2c_net.parameters(), lr=initial_lr, eps=1e-5, alpha=0.99)
-        #self.optimizer = optim.SGD(self.a2c_net.parameters(), lr=initial_lr)
-        
-        # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=300)
-        
-        
     def save(self, filename):
         torch.save(self.a2c_net.state_dict(), filename)
 
-
     def load(self, filename):
         self.a2c_net.load_state_dict(torch.load(filename, map_location=self.device))
-    
-    
-    def evaluate_actions(self, state, action):
-        logit, value = self.a2c_net(state)
-        
-        probs     = F.softmax(logit, dim=-1)
-        log_probs = F.log_softmax(logit, dim=-1)
-        
-        action_log_probs = log_probs.gather(1, action)
-        #print(f"state: {state}.\naction: {action}.\nlog_probs: {log_probs}.\naction_log_probs: {action_log_probs}")
-        entropy = -(probs * log_probs).sum(1).mean()
-        
-        return logit, action_log_probs, value, entropy
 
+    def set_lr(self, lr):
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] = lr
 
-    def compute_losses(self, env_idx, n_steps, end):
+    def _tensor(self, states):
+        if not torch.is_tensor(states):
+            states = torch.from_numpy(states)
+        return states.to(self.device, dtype=torch.float32)
+
+    @torch.no_grad()
+    def act(self, states, stochastic=True):
         '''
-        
+        Actions for a batch of states, with their log-probabilities and the
+        state values (all as numpy arrays).
         '''
-        #print(f"last_step_idx: {last_step_idx}")
+        logits, values = self.a2c_net(self._tensor(states))
+        dist = torch.distributions.Categorical(logits=logits)
+        actions = dist.sample() if stochastic else logits.argmax(dim=1)
+        return (actions.cpu().numpy(), dist.log_prob(actions).cpu().numpy(), values.cpu().numpy())
 
-        memory = self.memory[env_idx]
-        
-        # Predict the value of the last state
-        next_value_pred = 0
-        if end == False:
-            with torch.no_grad():
-                _, next_value_pred = self.a2c_net(memory.get_last_state().to(self.device))
-                next_value_pred = next_value_pred.cpu()
+    @torch.no_grad()
+    def values(self, states):
+        return self.a2c_net(self._tensor(states))[1].cpu().numpy()
 
-        returns = memory.calc_nsteps_returns(next_value_pred, self.gamma).to(self.device)
-
-        # Get state-action pairs
-        states, actions = memory.get_s_a()
-        states, actions = states.to(self.device), actions.to(self.device)
-        
-        logit, action_log_probs, values, entropy = self.evaluate_actions(states, actions)
-
-        values = values.view(n_steps, 1)
-        action_log_probs = action_log_probs.view(n_steps, 1)
-
-        with torch.no_grad():
-            advantages = returns - values
-        
-        value_loss = advantages.pow(2).mean()
-        policy_loss = -(Variable(advantages.data) * action_log_probs).mean()
-        policy_loss -= entropy * self.entropy_coef
-
-        return value_loss, policy_loss
-
-    
-    def update(self, value_losses, policy_losses):
+    def compute_gae(self, rewards, values, dones, last_values):
         '''
-        
+        rewards, values, dones: arrays [n_steps, n_envs]; last_values: [n_envs]
+        (value of the states reached after the last step).
+        dones[t] is 1 if the game ended (terminal state) after the action at step t.
+        Returns (advantages, returns), both [n_steps, n_envs].
         '''
-        #print(f"value_losses: {value_losses}. policy_losses: {policy_losses}")
-        #r = len(value_losses)
-        value_losses = torch.stack(value_losses) #.view((r,-1))
-        policy_losses = torch.stack(policy_losses) #.view((r,-1))
-        
-        # Update the model with gradient descent
-        self.optimizer.zero_grad() #  Put back gradient to 0
-        loss = value_losses.mean() * self.value_loss_coef + policy_losses.mean()
-        loss.backward()
-        # gradient-clipping
-        #torch.nn.utils.clip_grad_value_(self.a2c_net.parameters(), 100)
-        nn.utils.clip_grad_norm_(self.a2c_net.parameters(), self.max_grad_norm)
-        self.optimizer.step()
+        n_steps = rewards.shape[0]
+        advantages = np.zeros_like(rewards)
+        last_gae = 0.
+        for t in reversed(range(n_steps)):
+            next_values = last_values if t == n_steps - 1 else values[t + 1]
+            not_done = 1. - dones[t]
+            delta = rewards[t] + self.gamma * next_values * not_done - values[t]
+            last_gae = delta + self.gamma * self.gae_lambda * not_done * last_gae
+            advantages[t] = last_gae
+        return advantages, advantages + values
 
+    def update(self, states, actions, old_log_probs, advantages, returns):
+        '''
+        PPO / A2C update on a rollout (all inputs flattened over steps and envs).
+        Returns a dict of monitoring statistics.
+        '''
+        states = self._tensor(states)
+        actions = torch.as_tensor(actions, device=self.device, dtype=torch.long)
+        old_log_probs = torch.as_tensor(old_log_probs, device=self.device, dtype=torch.float32)
+        advantages = torch.as_tensor(advantages, device=self.device, dtype=torch.float32)
+        returns = torch.as_tensor(returns, device=self.device, dtype=torch.float32)
 
-    def roll_memory(self, env_idx):
-        # Last state becomes the first one
-        # (if it is an end state it will be erased during the reset_episode)        
-        self.memory[env_idx].roll()
+        batch_size = states.shape[0]
+        mb_size = batch_size // self.n_minibatches
+        stats = {"policy_loss": 0., "value_loss": 0., "entropy": 0., "approx_kl": 0., "clip_frac": 0.}
+        n = 0
+        for _ in range(self.ppo_epochs):
+            perm = torch.randperm(batch_size, device=self.device)
+            for k in range(self.n_minibatches):
+                idx = perm[k * mb_size:(k + 1) * mb_size]
+                logits, values = self.a2c_net(states[idx])
+                dist = torch.distributions.Categorical(logits=logits)
+                log_probs = dist.log_prob(actions[idx])
+                entropy = dist.entropy().mean()
 
+                adv = advantages[idx]
+                adv = (adv - adv.mean()) / (adv.std() + 1e-8)
+                log_ratio = log_probs - old_log_probs[idx]
+                ratio = log_ratio.exp()
+                policy_loss = -torch.min(ratio * adv,
+                                         ratio.clamp(1 - self.clip_eps, 1 + self.clip_eps) * adv).mean()
+                value_loss = 0.5 * (returns[idx] - values).pow(2).mean()
+                loss = policy_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy
 
-    def reset_memory(self, env_idx, state=None):
-        self.memory[env_idx].reset(state)
-        
+                self.optimizer.zero_grad(set_to_none=True)
+                loss.backward()
+                nn.utils.clip_grad_norm_(self.a2c_net.parameters(), self.max_grad_norm)
+                self.optimizer.step()
+
+                with torch.no_grad():
+                    stats["policy_loss"] += policy_loss.item()
+                    stats["value_loss"] += value_loss.item()
+                    stats["entropy"] += entropy.item()
+                    stats["approx_kl"] += ((ratio - 1) - log_ratio).mean().item()
+                    stats["clip_frac"] += ((ratio - 1).abs() > self.clip_eps).float().mean().item()
+                n += 1
+        return {k: v / n for k, v in stats.items()}

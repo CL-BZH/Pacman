@@ -7,81 +7,64 @@ Created on Sat Apr 27 20:38:31 2024
 """
 
 from pacman_env import PacmanEnvironment
-from ghost_agents import EdibleGhostBehaviors
 from algorithms import DQN, A2C
 import random
 import numpy as np
 from scipy.spatial.distance import cdist
 import time
 from datetime import timedelta
-import numpy.matlib
 from abc import ABC, abstractmethod
 import torch 
-import torch.nn.functional as F  
 from typing import List
-
-#from matplotlib import pyplot as plt
-#from IPython.display import display
 import pandas as pd
 import pathlib
 from collections import deque
 
+
 class PacmanAgent(ABC):
-    def __init__(self, pacman_envs: List[PacmanEnvironment], n_frames, grayscale):
-        self.gamma = 1
-        self.episode_total_reward = 0
+    '''
+    Base class of the agents.
+
+    The state given to the networks is made of the last 'n_frames' images of
+    an environment stacked along the channel axis (one stack per environment).
+    The image is either the environment's RGB(+power) image, optionally in
+    grayscale, or its feature planes (features=True, see
+    PacmanEnvironment.feature_image).
+    '''
+    def __init__(self, pacman_envs: List[PacmanEnvironment], n_frames=1, grayscale=False, features=False):
         self.pacman_envs = pacman_envs
         self.n_envs = len(pacman_envs)
         self.weights = np.ones(len(self.pacman_envs[0].valid_pos))
-        self.reward_per_episode = []
         self.actions = self.pacman_envs[0].get_all_actions()
         self.n_actions = len(self.actions)
-        self.current_state = []
-        self.episode_history = []
-        self.episode_rewards = []
-        self.total_reward_per_episode = []
+        self.features = features
+        self.grayscale = grayscale and not features
+        self.n_frames = n_frames
 
-        rows, columns, channels = self.pacman_envs[0].rgb_image_shape
-        self.img_n_channels = channels # Channels of an image
-        self.n_frames = n_frames # number of frames (images) per state
-        # Store image frames
-        self.image_frames = np.zeros((self.img_n_channels * self.n_frames, rows, columns), dtype=np.float32)
-        
-        self.cnn_in_channels = self.img_n_channels * self.n_frames # Input size of the CNN
-        if grayscale == True:
-            self.img_n_channels = 1 # grayscale
-            self.cnn_in_channels = self.n_frames
-            self.input_shape = (self.cnn_in_channels, rows, columns)
-        else:
-            self.input_shape = (self.cnn_in_channels, rows, columns)
-        
-        
+        env = self.pacman_envs[0]
+        rows, columns, channels = env.feature_image_shape if features else env.rgb_image_shape
+        self.img_n_channels = 1 if self.grayscale else channels
+        self.input_shape = (self.img_n_channels * self.n_frames, rows, columns)
+
+        self.frame_stacks = [deque(maxlen=self.n_frames) for _ in range(self.n_envs)]
+        self.current_state = [None] * self.n_envs
+        self.episode_rewards = []
+
     def reset(self):
         for i in range(self.n_envs):
             self.pacman_envs[i].reset()
-        self.episode_total_reward = 0
-        self.reward_per_episode = []
-        self.current_state = []
-        self.episode_history = []
+        self.current_state = [None] * self.n_envs
         self.episode_rewards = []
-        self.total_reward_per_episode = []
-        
+
     def reset_episode(self):
-        self.current_state = []
+        '''
+        Start a new game in every environment.
+        '''
         for env_idx in range(self.n_envs):
-            #print(f"Reset episode for env {env_idx}")
-            
-            self.episode_total_reward = 0
-            
             self.reset_env(env_idx)
-    
-            self.episode_history = []
-            self.episode_rewards = []
-            
-            # Child class specific reset
-            self.child_reset_episode(env_idx)
-            
-        
+            self.current_state[env_idx] = self.observe(env_idx, reset=True)
+        self.episode_rewards = []
+
     def reset_env(self, env_idx):
         '''
         Reset one environment with a start position chosen so that
@@ -106,80 +89,59 @@ class PacmanAgent(ABC):
         '''
         Current image of an environment as a (channels, height, width) float32 array.
         '''
-        img = self.image_processing(self.pacman_envs[env_idx].rgb_image)
-        if self.img_n_channels > 1:
-            img = np.transpose(img, (2, 0, 1))
-        return np.ascontiguousarray(img, dtype=np.float32)
-
-    def set_gamma(self, gamma):
-        self.gamma = gamma
-
-    def image_processing(self, img):
-            
-        def rgb2gray(rgb):
-            # Check for example OpenCV
+        env = self.pacman_envs[env_idx]
+        img = env.feature_image if self.features else env.rgb_image
+        if self.grayscale:
             scale = np.array([0.2989, 0.5870, 0.1140], dtype='float32')
-            img = np.dot(rgb[...,:3], scale)
-            return np.expand_dims(img, axis=0) #img[np.newaxis,...]
-            
-        if self.img_n_channels == 1:
-            # transform to grayscale
-            img = rgb2gray(img)
-            
-        return img
+            img = np.dot(img[..., :3], scale)[..., np.newaxis]
+        return np.ascontiguousarray(np.transpose(img, (2, 0, 1)), dtype=np.float32)
 
-    def frames_to_state(self):
+    def stacked_observation(self, env_idx, reset=False):
         '''
-        Take the stored image frames and return a state.
+        State of environment 'env_idx': its last n_frames images stacked along
+        the channel axis (oldest first). On reset, the first image is repeated.
+        Must be called once after each move (it pushes the new image).
         '''
-        state = self.image_frames
-        # nn.Conv2d input: (1 x channels x height x width) 
-        state = state.view(-1, *state.size()[2:])
-        return state.unsqueeze(0)
-        
-    def image_to_state(self, np_img):
-        '''
-        Take a numpy image and reshape it into a tensor that
-        can pass through nn.Conv2d.
-        '''
-        tensor_image = torch.from_numpy(np_img)
-        # (height, width, channels) -> (channels, height, width)
-        if self.img_n_channels > 1:
-            tensor_image = tensor_image.permute(2, 0, 1)
+        obs = self.observation(env_idx)
+        stack = self.frame_stacks[env_idx]
+        if reset:
+            stack.clear()
+            stack.extend([obs] * self.n_frames)
+        else:
+            stack.append(obs)
+        return np.concatenate(stack, axis=0)
 
-        self.episode_history.append(tensor_image)
-        
-        # Replace the oldest frame with the new one
-        stack = []
-        for i in range(self.n_frames - 1):
-            stack.append(self.image_frames[i+1, :, :])
-        stack.append(tensor_image)
-        self.image_frames = torch.stack(stack)
-        
-        return self.frames_to_state()
-        
-    @abstractmethod
-    def child_reset_episode(self, env_idx):
-        pass
-        
-    @abstractmethod
-    def epsilon_greedy(self, s, eps):
+    def observe(self, env_idx=0, reset=False):
         '''
-        Epsilon-greedy policy
+        Same as stacked_observation() but as a (1, channels, height, width)
+        tensor; also updates current_state. Used to play games.
+        '''
+        state = torch.from_numpy(self.stacked_observation(env_idx, reset)).unsqueeze(0)
+        self.current_state[env_idx] = state
+        return state
+
+    @abstractmethod
+    def select_action(self, state, stockastic=False, env_idx=0):
+        '''
+        Returns (action index, action) for a state of shape (1, C, H, W).
         '''
         pass
 
     @abstractmethod
-    def take_action(self, **kwarg):
+    def run_episodes(self, **kwargs):
         '''
-        Take an action according to a given policy.
+        Training.
         '''
-        raise NotImplementedError("Must override take_action")
+        pass
 
     @abstractmethod
-    def run_episodes(self, episode_max_length=500, total_episodes=1000):
-        pass     
-    
+    def save(self, filename):
+        pass
+
+    @abstractmethod
+    def load(self, filename):
+        pass
+
 
 
 class DQN_PacmanAgent(PacmanAgent):
@@ -203,26 +165,7 @@ class DQN_PacmanAgent(PacmanAgent):
                        batch_size=batch_size, buffer_capacity=buffer_capacity,
                        n_envs=self.n_envs, n_step=n_step, double=double,
                        network=network, reward_scale=reward_scale, device=device)
-        # One stack of frames per environment
-        self.frame_stacks = [deque(maxlen=self.n_frames) for _ in range(self.n_envs)]
         print(f"DQN agent on device: {self.DQN.device}. Input shape: {self.input_shape}")
-        
-
-    def child_reset_episode(self, env_idx):
-        rgb = self.pacman_envs[env_idx].rgb_image
-        np_img = self.image_processing(rgb)
-        tensor_img = torch.from_numpy(np_img)
-        # (height, width, channels) -> (channels, height, width)
-        if self.img_n_channels > 1:
-            tensor_img = tensor_img.permute(2, 0, 1)
-        self.episode_history.append(tensor_img)
-        stack = []
-        for i in range(self.n_frames):
-            stack.append(tensor_img)
-        self.image_frames = torch.stack(stack)
-        current_state = self.frames_to_state()
-        self.current_state.append(current_state)
-        
         
     def epsilon_greedy(self, state, stockastic):
         def rand_argmax(tens):
@@ -236,44 +179,11 @@ class DQN_PacmanAgent(PacmanAgent):
             return rand_argmax(qvalues)
         return random.randint(0, self.n_actions - 1)
     
-    
     def select_action(self, state, stockastic=False, env_idx=0):
-        
         # Get the index of the action to perform according to current policy
         action_idx = self.epsilon_greedy(state, stockastic)
-        action = self.actions[action_idx]
-        return action_idx, action
+        return action_idx, self.actions[action_idx]
 
-        
-    def take_action(self, env_idx):
-        '''
-        Play one move in one environment with the epsilon-greedy policy
-        (no learning). Training uses run_episodes().
-        '''
-        state = self.current_state[env_idx]
-        action_idx, action = self.select_action(state, stockastic=True, env_idx=env_idx)
-        reward = self.pacman_envs[env_idx].step(action)
-        self.episode_rewards.append(reward)
-        np_img = self.image_processing(self.pacman_envs[env_idx].rgb_image)
-        self.current_state[env_idx] = self.image_to_state(np_img)
-        return reward
-
-
-    def stacked_observation(self, env_idx, reset=False):
-        '''
-        State of environment 'env_idx': its last n_frames images stacked along
-        the channel axis (oldest first). On reset, the first image is repeated.
-        '''
-        obs = self.observation(env_idx)
-        stack = self.frame_stacks[env_idx]
-        if reset:
-            stack.clear()
-            stack.extend([obs] * self.n_frames)
-        else:
-            stack.append(obs)
-        return np.concatenate(stack, axis=0)
-            
-    
     # Run steps for training
     def run_episodes(self, total_steps=3_000_000, episode_max_length=1000,
                      epsilon_start=1.0, epsilon_end=0.02, epsilon_fraction=0.25,
@@ -395,212 +305,189 @@ class DQN_PacmanAgent(PacmanAgent):
         
     def load(self, filename):
         self.DQN.load(filename)
-        # If the checkpoint had another architecture the network was rebuilt
-        self.input_shape = self.DQN.input_shape
-
 
 
 
 class A2C_PacmanAgent(PacmanAgent):
-    def __init__(self, pacman_envs: List[PacmanEnvironment], gamma=0.99, initial_lr=0.0005, grayscale=False, n_frames=3, n_steps = 5):
-        super().__init__(pacman_envs, n_frames, grayscale)
+    '''
+    Actor-critic agent (A2C, or PPO with ppo_epochs > 1).
+
+    - Input: the environment's feature planes (walls, cookies, power cookies,
+      Pacman, one plane per ghost, power level), 2 stacked frames by default
+      so that the direction in which the ghosts move is visible.
+    - Network: full-resolution actor-critic CNN, made exactly equivariant to the
+      left-right mirror symmetry of the board when the board is symmetric
+      (symmetric=True).
+    - Training (run_episodes): all environments step in lockstep for n_steps,
+      then advantages are computed with GAE and the network is updated with
+      PPO (or A2C when ppo_epochs=1 and n_minibatches=1).
+    - Optional curriculum: the ghosts' aggressiveness starts at
+      'curriculum_start' times its configured value and increases linearly to
+      the full value over the first 'curriculum_fraction' of the training.
+    '''
+    def __init__(self, pacman_envs: List[PacmanEnvironment], gamma=0.99, initial_lr=2.5e-4, n_frames=2,
+                 gae_lambda=0.95, entropy_coef=0.03, value_loss_coef=0.5, ppo_epochs=4, n_minibatches=4,
+                 clip_eps=0.2, reward_scale=0.1, symmetric=True, device=None):
+        super().__init__(pacman_envs, n_frames, grayscale=False, features=True)
         self.lr = initial_lr
-        self.n_steps = n_steps
-        
-        self.A2C = A2C(self.input_shape, self.pacman_envs[0].n_actions, self.n_steps, self.n_envs, gamma, initial_lr)
 
-    def epsilon_greedy(self, state, eps):
-        pass
-        
-    def child_reset_episode(self, env_idx):
-        rgb = self.pacman_envs[env_idx].rgb_image
-        np_img = self.image_processing(rgb)
-        tensor_img = torch.from_numpy(np_img)
-        # (height, width, channels) -> (channels, height, width)
-        if self.img_n_channels > 1:
-            tensor_img = tensor_img.permute(2, 0, 1)
-        self.episode_history.append(tensor_img)
-        stack = []
-        for i in range(self.n_frames):
-            stack.append(tensor_img)
-        self.image_frames = torch.stack(stack)
-        current_state = self.frames_to_state()
-        self.current_state.append(current_state)
-        self.A2C.reset_memory(env_idx, current_state)
-        #print(f"Reset episode env {env_idx}. State: {current_state}")
-            
-    
+        action_mirror = None
+        board = self.pacman_envs[0].map.map
+        if symmetric:
+            if np.array_equal(board, board[:, ::-1]):
+                mirror_name = {'E': 'W', 'W': 'E', 'N': 'N', 'S': 'S', 'I': 'I'}
+                action_mirror = [self.actions.index(mirror_name[a]) for a in self.actions]
+            else:
+                print("The board is not left-right symmetric: symmetric network disabled.")
+
+        self.A2C = A2C(self.input_shape, self.n_actions, gamma=gamma, initial_lr=initial_lr,
+                       gae_lambda=gae_lambda, entropy_coef=entropy_coef, value_loss_coef=value_loss_coef,
+                       ppo_epochs=ppo_epochs, n_minibatches=n_minibatches, clip_eps=clip_eps,
+                       reward_scale=reward_scale, action_mirror=action_mirror, device=device)
+        print(f"A2C agent on device: {self.A2C.device}. Input shape: {self.input_shape}. "
+              f"Symmetric network: {action_mirror is not None}")
+
     def select_action(self, state, stockastic=False, env_idx=0):
-        # No gradient needed here: the losses are recomputed in A2C.evaluate_actions()
-        with torch.no_grad():
-            logit, value = self.A2C.a2c_net(state.to(self.A2C.device))
-            probs = F.softmax(logit, dim=-1)
-        #print(f"logit: {logit}. probs: {probs}")
-        
-        if stockastic:
-            action_idx = probs.multinomial(num_samples=1)[0,0].item()
-        else:
-            action_idx = torch.argmax(probs).item()
-            
-        action = self.actions[action_idx]
-        
-        return action_idx, action
+        actions, _, _ = self.A2C.act(state, stochastic=stockastic)
+        action_idx = int(actions[0])
+        return action_idx, self.actions[action_idx]
 
-        
-    def take_action(self, env_idx):
-        # get the current state
-        state = self.current_state[env_idx]
-        
-        #print(f"env {env_idx}. state: {state}")
-        #print(f"mem state: {self.A2C.memory[env_idx].get_last_state()}")
-        
-        #assert torch.equal(self.A2C.memory[env_idx].get_last_state(), state)
-        
-        # Take action according to current policy
-        action_idx, action = self.select_action(state, stockastic=True,
-                                                env_idx=env_idx)
-        #print(f"Action index: {action_idx} -> action: {action}")
-        
-        reward = self.pacman_envs[env_idx].step(action)
-        self.episode_rewards.append(reward)
+    def run_episodes(self, total_steps=20_000_000, n_steps=128, episode_max_length=1000,
+                     min_lr=None, curriculum_fraction=0., curriculum_start=0.3,
+                     log_interval=500, save_interval=1_000_000, save_dir="./Tmp"):
+        '''
+        Train the agent.
+        parameters:
+            total_steps: total number of environment steps (transitions), all environments together.
+            n_steps: rollout length per environment between two updates
+                (an update uses n_steps * n_envs transitions).
+            episode_max_length: games longer than this are aborted (truncated, not terminal).
+            min_lr: if set, the learning rate decays linearly from initial_lr to min_lr.
+            curriculum_fraction, curriculum_start: see the class description (0 = no curriculum).
+            log_interval: print statistics every 'log_interval' finished games.
+            save_interval: save the network every 'save_interval' steps.
+        '''
+        n_envs = self.n_envs
+        T = n_steps
+        gamma = self.A2C.gamma
+        reward_scale = self.A2C.reward_scale
+        save_dir = pathlib.Path(save_dir)
+        save_dir.mkdir(parents=True, exist_ok=True)
 
-        # get the reached state
-        rgb = self.pacman_envs[env_idx].rgb_image
-        np_img = self.image_processing(rgb)
-        # Put in the format for Pytorch Conv2d
-        new_state = self.image_to_state(np_img)
-        
-        # Update current state
-        self.current_state[env_idx] = new_state
+        base_levels = [list(env.ghost_aggressiveness_levels) for env in self.pacman_envs]
 
-        # Add a new entry in the rollout memory
-        self.A2C.memory[env_idx].insert(new_state,
-                                        torch.Tensor([action_idx]).type(torch.int64),
-                                        reward)
+        def curriculum_scale(step):
+            if curriculum_fraction <= 0:
+                return 1.
+            return curriculum_start + (1. - curriculum_start) * min(1., step / (curriculum_fraction * total_steps))
 
-        
-    def run_episodes(self, episode_max_length=500, total_episodes=1000, min_lr=0.00002):
+        def new_game(env_idx, scale):
+            # Each environment gets its own list (the config's list is shared)
+            self.pacman_envs[env_idx].ghost_aggressiveness_levels = [a * scale for a in base_levels[env_idx]]
+            self.reset_env(env_idx)
+            return self.stacked_observation(env_idx, reset=True)
 
-        #print(f"Number of env: {self.n_envs}")
-        
-        def learning_rate_generator(epochs, min_lr):
-            updated_lr = self.lr
-            epoch = 0
-            while epoch < epochs:
-                if updated_lr < min_lr:
-                    updated_lr = min_lr
-                yield updated_lr
-                epoch += 1
-                updated_lr = self.lr * ( 1 - (epoch / epochs))**2
-        
-        lr = learning_rate_generator(total_episodes, min_lr)
+        scale = curriculum_scale(0)
+        states = np.stack([new_game(i, scale) for i in range(n_envs)])
 
-        self.reset()
-        episodes = 0
-        self.reward_per_episode = []
-        episodes_durations = []
-        average_duration_str = ""
-        average_reward_str = ""
-        lost_count = 0
-        ghost_count = 0
-        finished_games = 1
-        alpha = self.lr
-        #fig, ax = plt.subplots(1,1)
-        
-        training_start = time.time()
-        
-        while episodes != total_episodes:
-            start = time.time()
-                
-            # Reset for an episode
-            self.reset_episode()
-            
-            # For the first 10000 episodes the behavior of the edible ghosts
-            # is set to RANDOM
-            # if episodes < 10000:
-            #     for env in self.pacman_envs:
-            #         for ghost in env.ghosts:
-            #             ghost.edible_ghost_behavior = EdibleGhostBehaviors.RANDOM
-                    
+        buf_states = np.zeros((T, n_envs, *self.input_shape), dtype=np.float32)
+        buf_actions = np.zeros((T, n_envs), dtype=np.int64)
+        buf_log_probs = np.zeros((T, n_envs), dtype=np.float32)
+        buf_values = np.zeros((T, n_envs), dtype=np.float32)
+        buf_rewards = np.zeros((T, n_envs), dtype=np.float32)
+        buf_dones = np.zeros((T, n_envs), dtype=np.float32)
 
-            # Run an episode in each environment
-            current_episode_counter = episode_max_length
-            while True:
-                value_losses = []
-                policy_losses = []
-                
-                #assert torch.equal(self.current_state, self.A2C.memory.states[0])
-                for env_idx in range(self.n_envs):
-                    if self.pacman_envs[env_idx].end == True:
-                        continue
-                    # Take up to n_steps in each environment
-                    for step in range(self.n_steps):
-                        self.take_action(env_idx)
-                        #print(f"Memory after action {step}")
-                        #self.A2C.memory.show()
-                        env = self.pacman_envs[env_idx]
-                        if env.end == True:
-                            lost_count += int(env.dead == True)
-                            ghost_count += len(env.ghosts)
-                            finished_games += 1
-                            break
+        ep_rewards = np.zeros(n_envs)
+        ep_lengths = np.zeros(n_envs, dtype=np.int64)
+        history = []
+        update_stats = []
+        lr = self.lr
+        step, next_save, logged = 0, save_interval, 0
+        start = time.time()
+        last_log_time, last_log_step = start, 0
 
-                    #assert torch.equal(self.current_state, self.A2C.memory.get_last_state())
-                    value_loss, policy_loss = self.A2C.compute_losses(env_idx, step+1,
-                                                                      self.pacman_envs[env_idx].end)
-                    value_losses.append(value_loss)
-                    policy_losses.append(policy_loss)
-                
-                self.A2C.update(value_losses, policy_losses)
+        while step < total_steps:
+            scale = curriculum_scale(step)
 
-                ended_envs = 0
-                for env_idx in range(self.n_envs):
-                    if self.pacman_envs[env_idx].end == True:
-                        ended_envs += 1
-                        continue
-                    self.A2C.roll_memory(env_idx)
+            # Collect a rollout of T steps in every environment
+            for t in range(T):
+                actions, log_probs, values = self.A2C.act(states)
+                buf_states[t] = states
+                buf_actions[t] = actions
+                buf_log_probs[t] = log_probs
+                buf_values[t] = values
 
-                if ended_envs == self.n_envs:
-                    break
+                next_states = np.empty_like(states)
+                for env_idx, env in enumerate(self.pacman_envs):
+                    reward = env.step(self.actions[actions[env_idx]])
+                    ep_rewards[env_idx] += reward
+                    ep_lengths[env_idx] += 1
+                    obs = self.stacked_observation(env_idx)
+                    done = env.end
+                    truncated = (not done) and ep_lengths[env_idx] >= episode_max_length
 
-                current_episode_counter -= 1
-                if current_episode_counter  == 0:
-                    # Abort too long games
-                    break
+                    r = reward * reward_scale
+                    if truncated:
+                        # Aborted game: not a real end, bootstrap from the value of the reached state
+                        r += gamma * self.A2C.values(obs[np.newaxis])[0]
+                    buf_rewards[t, env_idx] = r
+                    buf_dones[t, env_idx] = float(done or truncated)
 
-            self.reward_per_episode.append(np.sum(self.episode_rewards))
+                    if done or truncated:
+                        history.append({"step": step, "reward": ep_rewards[env_idx],
+                                        "length": ep_lengths[env_idx],
+                                        "won": bool(done and not env.dead), "lost": bool(env.dead),
+                                        "aborted": bool(truncated), "ghosts_left": len(env.ghosts),
+                                        "power_cookies_eaten": env.n_eaten_power_cookies,
+                                        "aggressiveness_scale": scale})
+                        obs = new_game(env_idx, scale)
+                        ep_rewards[env_idx] = 0.
+                        ep_lengths[env_idx] = 0
+                    next_states[env_idx] = obs
+                states = next_states
+                step += n_envs
 
-            if alpha != min_lr:
-                alpha = next(lr)
-                for param_group in self.A2C.optimizer.param_groups:
-                    param_group['lr'] = alpha
-            
-            episodes += 1
-            
-            end = time.time()
-            episodes_durations.append(timedelta(seconds=end-start))
+            # Advantages and update
+            advantages, returns = self.A2C.compute_gae(buf_rewards, buf_values, buf_dones,
+                                                       self.A2C.values(states))
+            update_stats.append(self.A2C.update(buf_states.reshape(T * n_envs, *self.input_shape),
+                                                buf_actions.reshape(-1), buf_log_probs.reshape(-1),
+                                                advantages.reshape(-1), returns.reshape(-1)))
+            if min_lr is not None:
+                lr = self.lr + min(1., step / total_steps) * (min_lr - self.lr)
+                self.A2C.set_lr(lr)
 
-            if episodes % 100 == 0:
-                average_duration_str = f"Avg duration: {np.mean(episodes_durations)}"
-                average_reward_str = f", Avg reward: {np.mean(self.reward_per_episode)/self.n_envs:.2f}"
-                average_ghosts = float(ghost_count)/finished_games
-                print(f"{timedelta(seconds=time.time() - training_start)}. Episodes {episodes}. " + 
-                      average_duration_str + average_reward_str + f", lost {float(lost_count*100)/finished_games:.1f}%. " +
-                      f"Avg ghost: {average_ghosts:.3f}, (lr: {alpha:.6f})")
-                episodes_durations = []
-                lost_count = 0
-                ghost_count = 0
-                finished_games = 0
-                
-                df = pd.DataFrame({"rewards": self.reward_per_episode, "ghosts": average_ghosts})
-                df.to_csv('./Tmp/pacman_a2c_reward_per_episode.csv', mode='a', index=False, header=False)
-                self.reward_per_episode = []
-        
-            if episodes % 5000 == 0 or episodes == total_episodes:
-                print(f"Save NN params (episodes: {episodes})")
-                filename = f"./Tmp/pacman_color_a2c_{episodes}.pth"
-                self.save(filename)
-        
+            # Logging
+            if len(history) - logged >= log_interval:
+                logged = len(history)
+                recent = history[-log_interval:]
+                now = time.time()
+                sps = (step - last_log_step) / (now - last_log_time)
+                last_log_time, last_log_step = now, step
+                avg = lambda k: np.mean([h[k] for h in recent])
+                u = {k: np.mean([s[k] for s in update_stats]) for k in update_stats[0]}
+                update_stats = []
+                curriculum_str = f"aggr x{scale:.2f} | " if curriculum_fraction > 0 else ""
+                print(f"{timedelta(seconds=int(now - start))} | step {step:>9} | games {len(history):>7} | "
+                      f"{curriculum_str}reward {avg('reward'):7.2f} | "
+                      f"won {100*avg('won'):5.1f}% lost {100*avg('lost'):5.1f}% aborted {100*avg('aborted'):4.1f}% | "
+                      f"ghosts left {avg('ghosts_left'):.2f} | len {avg('length'):5.1f} | "
+                      f"entropy {u['entropy']:.3f}, v_loss {u['value_loss']:.3f}, kl {u['approx_kl']:.4f}, "
+                      f"clip {u['clip_frac']:.2f} | lr {lr:.2e} | {sps:.0f} steps/s", flush=True)
+
+            # Checkpoints
+            if step >= next_save:
+                next_save += save_interval
+                self.save(str(save_dir / f"pacman_a2c_{step}.pth"))
+                pd.DataFrame(history).to_csv(save_dir / "pacman_a2c_training_log.csv", index=False)
+
+        # Restore the configured aggressiveness
+        for env, levels in zip(self.pacman_envs, base_levels):
+            env.ghost_aggressiveness_levels = levels
+        self.save(str(save_dir / "pacman_a2c_final.pth"))
+        pd.DataFrame(history).to_csv(save_dir / "pacman_a2c_training_log.csv", index=False)
+        print(f"Training done: {step} steps, {len(history)} games, {timedelta(seconds=int(time.time() - start))}")
+        return history
 
     def save(self, filename):
         self.A2C.save(filename)

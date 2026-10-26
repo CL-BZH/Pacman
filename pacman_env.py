@@ -414,6 +414,43 @@ class PacmanEnvironment:
 
         return rgb_del
         
+    @property
+    def feature_image_shape(self):
+        rows, columns, _ = self.rgb_image_shape
+        return (rows, columns, 5 + self.n_ghosts)
+
+    @property
+    def feature_image(self):
+        """
+        Richer alternative to rgb_image, with one binary plane per kind of object:
+            0: walls
+            1: cookies
+            2: power cookies
+            3: Pacman
+            4 ... 4+n_ghosts-1: one plane per ghost (ghosts have different aggressiveness)
+            last: Pacman's remaining power (power_credit / max_power_credit, constant plane)
+        Unlike rgb_image, walls cannot be confused with empty cells and each
+        ghost can be identified. Borders are removed as in rgb_image.
+        """
+        rows = self.map_actions.shape[0]
+        columns = self.map_actions.shape[1]
+        img = np.zeros((rows, columns, 5 + self.n_ghosts), dtype=np.float32)
+
+        def paint(positions, channel):
+            if positions:
+                ii, jj = zip(*positions)
+                img[list(ii), list(jj), channel] = 1.
+
+        paint(self.map.walls, 0)
+        paint(self.cookies, 1)
+        paint(self.power_cookies, 2)
+        paint([self.current_pacman_pos], 3)
+        for ghost in self.ghosts:
+            paint([tuple(ghost.pos)], 4 + ghost.id)
+        img[:, :, -1] = float(self.power_credit) / self.max_power_credit
+
+        return img[1:-1, 1:-1]
+
     def colormap(self, width, height, fig, ax):
 
         speed = 0.12
