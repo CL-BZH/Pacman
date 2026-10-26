@@ -10,7 +10,7 @@ Created on Tue May 21 11:24:25 2024
 Let a trained agent play Pacman.
 
 Examples:
-    python pacman_play.py                       # display one game of ./Tmp/pacman_a2c_final.pth
+    python pacman_play.py                       # display one game of the default A2C agent
     python pacman_play.py -n 1000               # statistics over 1000 games
     python pacman_play.py -a dqn -c my_dqn.pth  # DQN agent with another checkpoint
     python pacman_play.py -n 200 --show-losses  # replay (with display) up to 5 lost games out of 200
@@ -30,6 +30,14 @@ import os
 import sys
 import time
 from collections import defaultdict
+
+
+# Default trained agents (relative to the repository folder)
+REPO_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_CHECKPOINTS = {
+    "a2c": os.path.join("Trainings", "A2C", "PPO_1", "pacman_a2c_final.pth"),
+    "dqn": os.path.join("Trainings", "DQN", "pacman_dqn_final.pth"),
+}
 
 
 def play_game(env, agent, stockastic=False, display=False, wait=15, speed=0.12, max_moves=800):
@@ -116,7 +124,8 @@ def parse_args():
     parser.add_argument("-a", "--agent", choices=["a2c", "dqn"], default="a2c",
                         help="type of agent")
     parser.add_argument("-c", "--checkpoint", default=None,
-                        help="network parameters (.pth); default: ./Tmp/pacman_<agent>_final.pth")
+                        help="network parameters (.pth); default: "
+                             + ", ".join(f"{k}: {v}" for k, v in DEFAULT_CHECKPOINTS.items()))
     parser.add_argument("-n", "--games", type=int, default=1,
                         help="number of games to play")
     parser.add_argument("-f", "--frames", type=int, default=2,
@@ -168,9 +177,11 @@ def main():
     # Each game gets its own seed so that any game can be replayed identically
     base_seed = args.seed if args.seed is not None else random.SystemRandom().randrange(10**6)
 
-    checkpoint = args.checkpoint or f"./Tmp/pacman_{args.agent}_final.pth"
+    checkpoint = args.checkpoint or os.path.join(REPO_DIR, DEFAULT_CHECKPOINTS[args.agent])
     if not os.path.isfile(checkpoint):
-        sys.exit(f"Checkpoint not found: {checkpoint}")
+        sys.exit(f"Checkpoint not found: {checkpoint}\n"
+                 f"Use -c to give the checkpoint to load (a training saves its checkpoints "
+                 f"in ./Tmp, e.g. -c Tmp/pacman_{args.agent}_final.pth).")
 
     # Same game configuration as for the training
     env = PacmanEnvironment(pacman_conf)

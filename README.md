@@ -10,12 +10,12 @@ To let Pacman play games run the command below in a terminal.
 python pacman_play.py
 ```
 
-By default, the A2C agent saved in `./Tmp/pacman_a2c_final.pth` plays one game.
+By default, the trained A2C agent saved in `./Trainings/A2C/PPO_1/pacman_a2c_final.pth` plays one game.
 The options are listed with `python pacman_play.py --help`. For example:
 ```bash
 python pacman_play.py -n 1000                         # statistics over 1000 games
-python pacman_play.py -c Trainings/A2C/my_agent.pth   # another checkpoint
-python pacman_play.py -a dqn                          # the DQN agent (./Tmp/pacman_dqn_final.pth)
+python pacman_play.py -c Tmp/pacman_a2c_final.pth     # another checkpoint (e.g. a new training)
+python pacman_play.py -a dqn                          # the DQN agent (./Trainings/DQN/pacman_dqn_final.pth)
 python pacman_play.py --speed 0.3 --wait 10           # slower display
 python pacman_play.py -n 200 --show-losses            # replay up to 5 of the lost games with display
 ```
