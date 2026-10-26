@@ -10,19 +10,27 @@ To let Pacman play games run the command below in a terminal.
 python pacman_play.py
 ```
 
-In the file `pacman_play.py` you can set the configuration you want for the games.
+By default, the A2C agent saved in `./Tmp/pacman_a2c_final.pth` plays one game.
+The options are listed with `python pacman_play.py --help`. For example:
+```bash
+python pacman_play.py -n 1000                         # statistics over 1000 games
+python pacman_play.py -c Trainings/A2C/my_agent.pth   # another checkpoint
+python pacman_play.py -a dqn                          # the DQN agent (./Tmp/pacman_dqn_final.pth)
+python pacman_play.py --speed 0.3 --wait 10           # slower display
+```
 
-`n_games` is the number of game to run.
+The game configuration (board, ghosts, rewards) is the one defined in `pacman_training.py`,
+so that the agent plays the game it was trained on.
 
-If it is set to 1, then the game is displayed as in the example below.
+With one game (`-n 1`, the default), the game is displayed as in the example below.
 
 ![video](./Media/pacman-resize.gif)
 
 (***In the "Media" directory you will find the same with music...***)
 
-If it is set to a value bigger than 1, then `n_games` are played and statistics are provided at the end.
+With more games, they are played without display and statistics are provided at the end.
 
-This is an example, of output obtain with `n_games = 1000` with the A2C agent.
+This is an example of output obtained with `-n 1000` with the (original) A2C agent.
 ```bash
 Pacman won 79.40% of the games
 Number of game aborted:

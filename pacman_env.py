@@ -451,9 +451,10 @@ class PacmanEnvironment:
 
         return img[1:-1, 1:-1]
 
-    def colormap(self, width, height, fig, ax):
-
-        speed = 0.12
+    def colormap(self, width, height, fig, ax, speed=0.12):
+        '''
+        Draw the board. 'speed' is the duration (in seconds) of the pause after drawing.
+        '''
         
         # Get all ghosts positions and headings
         ghosts_pos = list()

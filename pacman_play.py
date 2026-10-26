@@ -6,20 +6,42 @@ Created on Tue May 21 11:24:25 2024
 @author: chris
 """
 
-from pacman_maps import pacman_map2
-from pacman_maps import pacman_map3
-from pacman_conf import PacmanConf
+"""
+Let a trained agent play Pacman.
+
+Examples:
+    python pacman_play.py                       # display one game of ./Tmp/pacman_a2c_final.pth
+    python pacman_play.py -n 1000               # statistics over 1000 games
+    python pacman_play.py -a dqn -c my_dqn.pth  # DQN agent with another checkpoint
+    python pacman_play.py --help                # all the options
+"""
+
+from pacman_training import pacman_conf  # same game configuration as for the training
 from pacman_env import PacmanEnvironment
-from ghost_agents import EdibleGhostBehaviors
 from pacman_agents import DQN_PacmanAgent
 from pacman_agents import A2C_PacmanAgent
 from matplotlib import pyplot as plt
 import numpy as np
+import torch
+import random
+import argparse
+import os
+import sys
 import time
 from collections import defaultdict
 
 
-def play_game(env, agent, stockastic=False, display=False):
+def play_game(env, agent, stockastic=False, display=False, wait=15, speed=0.12, max_moves=800):
+    '''
+    Play one game.
+        stockastic: if True, the action is sampled from the policy once all ghosts are eaten
+                    (the greedy action is always used while ghosts are present).
+        display: show the game in a window.
+        wait: seconds to wait before the game starts (display only).
+        speed: pause between two moves in seconds (display only).
+        max_moves: the game is aborted after this number of moves.
+    Returns (lost, aborted, number of ghosts left, number of power cookies eaten).
+    '''
 
     def set_figure(env: PacmanEnvironment):
         rows = env.state[0].shape[0]
@@ -38,10 +60,10 @@ def play_game(env, agent, stockastic=False, display=False):
         
     if display == True:
         width, height, fig, ax = set_figure(env)
-        env.colormap(width, height, fig, ax)
+        env.colormap(width, height, fig, ax, speed)
         plt.tick_params(left = False, right = False , labelleft = False , 
                         labelbottom = False, bottom = False) 
-        plt.pause(15)
+        plt.pause(max(wait, 0.01))
         ax.cla()
         
     rewards = []
@@ -60,7 +82,7 @@ def play_game(env, agent, stockastic=False, display=False):
         rewards.append(reward)
         
         if display == True:
-            env.colormap(width, height, fig, ax)
+            env.colormap(width, height, fig, ax, speed)
             if env.end == False:
                 ax.cla()
             else:
@@ -72,10 +94,10 @@ def play_game(env, agent, stockastic=False, display=False):
             #display = True
             if display == True:
                 width, height, fig, ax = set_figure(env)
-                env.colormap(width, height, fig, ax)
+                env.colormap(width, height, fig, ax, speed)
                 time.sleep(0.7)
                 plt.close();
-        if len(rewards) > 800:
+        if len(rewards) > max_moves:
             print(f"\nAbort.Number of ghost: {len(env.ghosts)}.") #"\nRewards:\n{rewards}")
             aborted = True
             break
@@ -85,58 +107,43 @@ def play_game(env, agent, stockastic=False, display=False):
     return env.dead == True, aborted, len(env.ghosts), env.n_eaten_power_cookies
 
 
-n_games = 1#000
-lost = []
-abort_count = defaultdict(int)
-ghost_count = defaultdict(int)
-eaten_power_cookies_count = defaultdict(int)
-display = True
-if n_games > 1:
-    display = False
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Let a trained agent play Pacman. With one game the game is displayed; "
+                    "with several games, statistics are printed at the end.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("-a", "--agent", choices=["a2c", "dqn"], default="a2c",
+                        help="type of agent")
+    parser.add_argument("-c", "--checkpoint", default=None,
+                        help="network parameters (.pth); default: ./Tmp/pacman_<agent>_final.pth")
+    parser.add_argument("-n", "--games", type=int, default=1,
+                        help="number of games to play")
+    parser.add_argument("-f", "--frames", type=int, default=2,
+                        help="number of stacked frames (must match the training)")
+    parser.add_argument("--greedy", action="store_true",
+                        help="always play the best action (by default the A2C agent samples its "
+                             "action from the policy once all ghosts are eaten)")
+    parser.add_argument("--display", action="store_true",
+                        help="display the games even when several games are played")
+    parser.add_argument("--wait", type=float, default=3.,
+                        help="seconds to wait before a displayed game starts")
+    parser.add_argument("--speed", type=float, default=0.12,
+                        help="pause between two moves of a displayed game (seconds)")
+    parser.add_argument("--max-moves", type=int, default=800,
+                        help="games longer than this are aborted")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="random seed (to replay the same games)")
+    return parser.parse_args()
 
-pacman_conf = PacmanConf(playground = pacman_map3,
-                            ghost_aggressiveness_levels = [0.74, 0.64], #, 0.52, 0.42],
-                            edible_ghosts_behavior = [EdibleGhostBehaviors.FLEE_FAST, EdibleGhostBehaviors.FLEE_FAST],
-                            n_ghosts = 2,
-                            n_power_cookies = 2,
-                            max_power_credit = 12,
-                            eat_cookie_reward = 0.8,
-                            eat_power_cookie_reward = 1.3,
-                            eat_ghost_reward = 20,
-                            living_cost = -0.15,
-                            lose_reward = -35,
-                            win_reward = 30,
-                            penalty_per_ghost = -5)
 
-env = PacmanEnvironment(pacman_conf)#, start_ghosts_pos=[(5,6), (5,8)])
-
-agent = A2C_PacmanAgent([env])  # n_frames must match the training (default 2)
-agent.load("./Tmp/pacman_a2c_final.pth")
-
-stockastic = True # When there is no ghost the action is stochastic (else argmax)
-
-# agent = DQN_PacmanAgent([env], n_frames=2) # n_frames must match the training
-# agent.load("./Tmp/pacman_dqn_final.pth")
-# agent.epsilon = 0.
-# stockastic = False
-  
-for i in range(n_games):
-    print(f'\r{i+1}', end='\r', flush=True)
-    has_lost_game, aborted, n_ghost, n_eaten_power_cookies = play_game(env, agent, stockastic, display)
-    if aborted == False:
-        lost.append(has_lost_game)
-    ghost_count[n_ghost] += 1.
-    abort_count[n_ghost] += int(aborted)
-    eaten_power_cookies_count[n_eaten_power_cookies] += 1.
-
-print("",end='\n')
-
-if n_games > 1:
-    winnings = (1. - np.sum(lost)/len(lost))*100.0
+def print_statistics(n_games, lost, abort_count, ghost_count, eaten_power_cookies_count):
+    if lost:
+        winnings = (1. - np.sum(lost)/len(lost))*100.0
+        print(f"Pacman won {winnings:.2f}% of the games")
+    else:
+        print("All the games were aborted")
     total_ghosts = 0.
     total_eaten_cookies = 0.
-    
-    print(f"Pacman won {winnings:.2f}% of the games")
     print("Number of game aborted:") 
     for k, v in dict(sorted(abort_count.items())).items():
         print(f"\twith {k} ghost: {v}")
@@ -150,3 +157,56 @@ if n_games > 1:
         print(f"\t{k} power cookies: {(v *100) / float(n_games)}")
         total_eaten_cookies += k * v
     print(f"Average number of power cookies eaten per game: {total_eaten_cookies/float(n_games)}")
+
+
+def main():
+    args = parse_args()
+    if args.seed is not None:
+        random.seed(args.seed)
+        np.random.seed(args.seed)
+        torch.manual_seed(args.seed)
+
+    checkpoint = args.checkpoint or f"./Tmp/pacman_{args.agent}_final.pth"
+    if not os.path.isfile(checkpoint):
+        sys.exit(f"Checkpoint not found: {checkpoint}")
+
+    # Same game configuration as for the training
+    env = PacmanEnvironment(pacman_conf)
+
+    if args.agent == "a2c":
+        agent = A2C_PacmanAgent([env], n_frames=args.frames)
+        stockastic = not args.greedy
+    else:
+        agent = DQN_PacmanAgent([env], n_frames=args.frames)
+        agent.epsilon = 0.
+        stockastic = False
+    agent.load(checkpoint)
+    print(f"Loaded {checkpoint}")
+
+    display = args.display or args.games == 1
+    lost = []
+    abort_count = defaultdict(int)
+    ghost_count = defaultdict(int)
+    eaten_power_cookies_count = defaultdict(int)
+
+    for i in range(args.games):
+        print(f'\r{i+1}', end='\r', flush=True)
+        has_lost_game, aborted, n_ghost, n_eaten_power_cookies = play_game(
+            env, agent, stockastic, display, wait=args.wait, speed=args.speed, max_moves=args.max_moves)
+        if aborted == False:
+            lost.append(has_lost_game)
+        ghost_count[n_ghost] += 1.
+        abort_count[n_ghost] += int(aborted)
+        eaten_power_cookies_count[n_eaten_power_cookies] += 1.
+
+    print("",end='\n')
+
+    if args.games > 1:
+        print_statistics(args.games, lost, abort_count, ghost_count, eaten_power_cookies_count)
+    else:
+        result = "aborted" if abort_count[n_ghost] else ("lost" if has_lost_game else "won")
+        print(f"Game {result}. Ghosts left: {n_ghost}. Power cookies eaten: {n_eaten_power_cookies}.")
+
+
+if __name__ == "__main__":
+    main()
