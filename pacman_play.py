@@ -82,7 +82,8 @@ def play_game(env, agent, stockastic=False, display=False, wait=15, speed=0.12, 
     Play one game.
         stockastic: if True, the action is sampled from the policy once all ghosts are eaten
                     (the greedy action is always used while ghosts are present).
-        display: show the game in a window.
+        display: show the game in a window. The game is computed first, then shown at a
+                 constant speed (moves that use the search take longer to compute).
         wait: seconds to wait before the game starts (display only).
         speed: pause between two moves in seconds (display only).
         max_moves: the game is aborted after this number of moves.
@@ -91,30 +92,14 @@ def play_game(env, agent, stockastic=False, display=False, wait=15, speed=0.12, 
              cause of the loss (see loss_cause(), None if the game was not lost)).
     '''
 
-    def set_figure(env: PacmanEnvironment):
-        rows = env.state[0].shape[0]
-        columns = env.state[0].shape[1]
-        m = max(rows, columns)
-        width = 5 * float(columns)/m
-        height = 5 * float(rows)/m
-        plt.ion()
-        fig, ax = plt.subplots(1,1)
-        fig.set_size_inches(width, height)
-        ax.set_axis_off()
-        return width, height, fig, ax
-
-    
     agent.reset_episode()
     if search is not None:
         search.new_game()
         
-    if display == True:
-        width, height, fig, ax = set_figure(env)
-        env.colormap(width, height, fig, ax, speed)
-        plt.tick_params(left = False, right = False , labelleft = False , 
-                        labelbottom = False, bottom = False) 
-        plt.pause(max(wait, 0.01))
-        ax.cla()
+    # Copies of the game after each move, to show it once it is over
+    frames = [env.clone()] if display else None
+    if display and search is not None:
+        print("Computing the game...", flush=True)
         
     rewards = []
     aborted = False
@@ -140,29 +125,47 @@ def play_game(env, agent, stockastic=False, display=False, wait=15, speed=0.12, 
         agent.episode_rewards.append(reward)
         rewards.append(reward)
         
-        if display == True:
-            env.colormap(width, height, fig, ax, speed)
-            if env.end == False:
-                ax.cla()
-            else:
-                plt.ioff()
-                plt.show()
+        if display:
+            frames.append(env.clone())
                 
         if len(rewards) == 600:
-            print(f"\nNon finished. Number of ghost: {len(env.ghosts)}.") #"\nRewards:\n{rewards}")
-            #display = True
-            if display == True:
-                width, height, fig, ax = set_figure(env)
-                env.colormap(width, height, fig, ax, speed)
-                time.sleep(0.7)
-                plt.close();
+            print(f"\nNon finished. Number of ghost: {len(env.ghosts)}.")
         if len(rewards) > max_moves:
             print(f"\nAbort.Number of ghost: {len(env.ghosts)}.") #"\nRewards:\n{rewards}")
             aborted = True
             break
         
+    if display:
+        animate_game(frames, wait, speed)
     cause = loss_cause(power_before, env.died_on_pacman_move) if env.dead else None
     return env.dead == True, aborted, len(env.ghosts), env.n_eaten_power_cookies, cause
+
+
+def animate_game(frames, wait, speed):
+    '''
+    Show a game from the copies of the environment taken after each move.
+        wait: seconds to wait before the first move.
+        speed: pause between two moves in seconds.
+    '''
+    env = frames[0]
+    rows = env.state[0].shape[0]
+    columns = env.state[0].shape[1]
+    m = max(rows, columns)
+    width = 5 * float(columns)/m
+    height = 5 * float(rows)/m
+    plt.ion()
+    fig, ax = plt.subplots(1,1)
+    fig.set_size_inches(width, height)
+    ax.set_axis_off()
+    env.colormap(width, height, fig, ax, speed)
+    plt.tick_params(left = False, right = False , labelleft = False , 
+                    labelbottom = False, bottom = False) 
+    plt.pause(max(wait, 0.01))
+    for k, env in enumerate(frames[1:]):
+        ax.cla()
+        env.colormap(width, height, fig, ax, speed)
+    plt.ioff()
+    plt.show()
 
 
 def parse_args():
