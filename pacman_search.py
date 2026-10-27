@@ -22,7 +22,21 @@ moves are compared on the same possible futures.
 
 The search runs on copies of the environment and does not consume the random
 numbers of the real game: with or without search, the ghosts make the same
-random draws, only Pacman's moves differ.
+random draws, only Pacman's moves differ. The simulations never see the real
+future: they use their own random numbers.
+
+How the ghosts move in the simulations ('ghost_model'):
+    - "exact": with the game's own code. The search then knows the exact behaviour
+      of the ghosts (A* chase with their configured aggressiveness, random moves
+      otherwise, fleeing when Pacman has power): a perfect model of the game.
+    - "chase": worst case, without using the game's code: when Pacman has no power,
+      every ghost moves along a shortest path towards Pacman at every move.
+    - "estimated": without using the game's code: a ghost moves along a shortest path
+      towards Pacman with probability p, and to a random neighbouring cell otherwise.
+      p is estimated for each ghost from the moves it made since the beginning of the
+      game (see GhostEstimator).
+    With "chase" and "estimated", the ghosts are assumed to flee from Pacman (move to
+    the neighbouring cell farthest from him) when he has power.
 """
 
 import numpy as np
@@ -31,8 +45,97 @@ from collections import deque
 from pacman_agents import A2C_PacmanAgent, DQN_PacmanAgent
 
 
+def neighbour_cells(env, pos):
+    '''Cells reachable from 'pos' in one move (including staying), without duplicates.'''
+    i, j = pos
+    return sorted(set(tuple(env.map_actions[i, j, idx]) for idx, _ in env.actions.values()))
+
+
+def distance_table(env):
+    '''
+    Shortest-path distances (in moves) between all the cells of the board (breadth-first search).
+    Returns a dict: dist[a][b].
+    '''
+    dist = {}
+    for start in env.valid_pos:
+        d = {start: 0}
+        frontier = [start]
+        while frontier:
+            nxt = []
+            for c in frontier:
+                for n in neighbour_cells(env, c):
+                    if n not in d:
+                        d[n] = d[c] + 1
+                        nxt.append(n)
+            frontier = nxt
+        dist[start] = d
+    return dist
+
+
+class GhostEstimator:
+    '''
+    Estimates, for each ghost, the probability p that it moves towards Pacman, from its
+    observed moves (only when Pacman has no power). Model of a move: towards Pacman
+    (along a shortest path) with probability p, else to a random neighbouring cell
+    (uniformly). A move "towards Pacman" reduces the distance to Pacman's position before
+    or after his move (the ghosts can move before or after Pacman).
+    p is the maximum a posteriori estimate with a Beta(2, 2) prior (p = 0.5 without observation).
+    '''
+    def __init__(self, dist):
+        self.dist = dist
+        self.grid = np.linspace(0., 1., 101)
+        self.reset()
+
+    def reset(self):
+        self.log_post = {}
+        self.n_obs = {}
+
+    def _towards(self, cell, ghost_pos, pacman_positions):
+        return any(self.dist[cell][p] < self.dist[ghost_pos][p] for p in pacman_positions)
+
+    def observe(self, env, before):
+        '''
+            env: the real game after a move.
+            before: (Pacman's position, power credit, {ghost id: position}) before the move.
+        '''
+        pacman_before, power_before, ghosts_before = before
+        if env.dead or power_before > 0 or env.power_credit > 0:
+            return
+        pacman_positions = (pacman_before, env.current_pacman_pos)
+        for ghost in env.ghosts:
+            if ghost.id not in ghosts_before:
+                continue
+            g0 = ghosts_before[ghost.id]
+            if g0 in pacman_positions:
+                continue
+            cells = neighbour_cells(env, g0)
+            towards = [c for c in cells if self._towards(c, g0, pacman_positions)]
+            q = len(towards) / len(cells)  # probability that a random move goes towards Pacman
+            if q in (0., 1.):
+                continue # not informative
+            if ghost.id not in self.log_post:
+                self.log_post[ghost.id] = np.log(self.grid * (1 - self.grid) + 1e-12) # Beta(2, 2) prior
+                self.n_obs[ghost.id] = 0
+            if tuple(ghost.pos) in towards:
+                self.log_post[ghost.id] += np.log(self.grid + (1 - self.grid) * q)
+            else:
+                self.log_post[ghost.id] += np.log((1 - self.grid) * (1 - q) + 1e-12)
+            self.n_obs[ghost.id] += 1
+
+    def p(self, ghost_id):
+        if ghost_id not in self.log_post:
+            return 0.5
+        return float(self.grid[np.argmax(self.log_post[ghost_id])])
+
+
+def snapshot(env):
+    '''What GhostEstimator.observe() needs to know about the game before a move.'''
+    return (env.current_pacman_pos, env.power_credit, {g.id: tuple(g.pos) for g in env.ghosts})
+
+
 class LookaheadSearch:
-    def __init__(self, agent, n_simulations=20, horizon=15, radius=5, mode="safety", margin=0.15):
+    def __init__(self, agent, n_simulations=20, horizon=15, radius=5, mode="safety", margin=0.15,
+                 ghost_model="chase"):
         '''
             agent: trained A2C_PacmanAgent or DQN_PacmanAgent (its first environment is the real game).
             n_simulations: number of simulations per candidate move.
@@ -41,9 +144,15 @@ class LookaheadSearch:
                     (number of cells, horizontally + vertically) from Pacman.
             mode: "safety" or "value" (see the module description).
             margin: in "safety" mode, minimal difference of death rate to change the agent's move.
+            ghost_model: "exact", "chase" or "estimated" (see the module description).
         '''
         if mode not in ("safety", "value"):
             raise ValueError(f"Unknown mode '{mode}'")
+        if ghost_model not in ("exact", "chase", "estimated"):
+            raise ValueError(f"Unknown ghost model '{ghost_model}'")
+        self.ghost_model = ghost_model
+        self.dist = distance_table(agent.pacman_envs[0]) if ghost_model != "exact" else None
+        self.estimator = GhostEstimator(self.dist) if ghost_model == "estimated" else None
         self.mode = mode
         self.margin = margin
         self.agent = agent
@@ -60,6 +169,40 @@ class LookaheadSearch:
             raise ValueError("Unknown agent")
         self.n_searches = 0 # number of moves decided by the search
         self.n_changed = 0  # ... for which the search chose another move than the agent
+
+    def new_game(self):
+        '''To call at the beginning of each game.'''
+        if self.estimator is not None:
+            self.estimator.reset()
+
+    def observe(self, env, before):
+        '''To call after each move of the real game, with snapshot(env) taken before the move.'''
+        if self.estimator is not None:
+            self.estimator.observe(env, before)
+
+    def _model_ghost(self, ghost, p_chase):
+        '''
+        Replace the move of a simulated ghost by the generic model (chase with
+        probability p_chase, random move otherwise, flee when Pacman has power).
+        Uses only np.random (for the common random numbers of the simulations).
+        '''
+        dist = self.dist
+        def move(env):
+            pos = tuple(ghost.pos)
+            cells = neighbour_cells(env, pos)
+            pacman = env.current_pacman_pos
+            if env.power_credit > 0:
+                far = max(dist[c][pacman] for c in cells)
+                choices = [c for c in cells if dist[c][pacman] == far]
+            elif np.random.random() < p_chase:
+                near = min(dist[c][pacman] for c in cells)
+                choices = [c for c in cells if dist[c][pacman] == near]
+            else:
+                choices = cells
+            new_pos = choices[np.random.randint(len(choices))]
+            ghost.heading = env.heading(np.asarray(pos), np.asarray(new_pos))
+            ghost.pos = new_pos
+        ghost.move = move # attribute of this copy of the ghost only
 
     def _evaluate(self, states):
         '''
@@ -116,7 +259,12 @@ class LookaheadSearch:
         sims = []
         for move in moves:
             for k in range(self.n_simulations):
-                sims.append({"move": move, "env": env.clone(), "frames": deque(frames, maxlen=frames.maxlen),
+                sim_env = env.clone()
+                if self.ghost_model != "exact":
+                    for ghost in sim_env.ghosts:
+                        p = 1. if self.ghost_model == "chase" else self.estimator.p(ghost.id)
+                        self._model_ghost(ghost, p)
+                sims.append({"move": move, "env": sim_env, "frames": deque(frames, maxlen=frames.maxlen),
                              "rng": np.random.RandomState(sim_seeds[k]).get_state(),
                              "score": 0., "discount": 1.})
 

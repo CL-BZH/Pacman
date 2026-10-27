@@ -35,7 +35,7 @@ import os
 import sys
 import time
 from collections import defaultdict
-from pacman_search import LookaheadSearch
+from pacman_search import LookaheadSearch, snapshot
 
 
 # Default trained agents (relative to the repository folder)
@@ -105,6 +105,8 @@ def play_game(env, agent, stockastic=False, display=False, wait=15, speed=0.12, 
 
     
     agent.reset_episode()
+    if search is not None:
+        search.new_game()
         
     if display == True:
         width, height, fig, ax = set_figure(env)
@@ -130,7 +132,10 @@ def play_game(env, agent, stockastic=False, display=False, wait=15, speed=0.12, 
             _, action = agent.select_action(state, stockastic=stockastic)
 
         power_before.append(env.power_credit)
+        before = snapshot(env) if search is not None else None
         reward = env.step(action)
+        if search is not None:
+            search.observe(env, before)
         state = agent.observe(0)
         agent.episode_rewards.append(reward)
         rewards.append(reward)
@@ -193,6 +198,10 @@ def parse_args():
     parser.add_argument("--search-mode", choices=["safety", "value"], default="safety",
                         help="with --search: 'safety' changes the agent's move only when it clearly leads "
                              "to more deaths; 'value' plays the move with the best simulated score")
+    parser.add_argument("--ghost-model", choices=["exact", "chase", "estimated"], default="chase",
+                        help="with --search, how the ghosts move in the simulations: 'exact' = the game's "
+                             "code, 'chase' = always towards Pacman (worst case), 'estimated' = towards "
+                             "Pacman with a probability estimated from the ghosts' observed moves")
     parser.add_argument("--radius", type=int, default=5,
                         help="with --search, search only when a ghost is at most this distance from Pacman")
     parser.add_argument("-w", "--workers", type=int, default=1,
@@ -262,7 +271,7 @@ def make_player(args, checkpoint, quiet=False):
     search = None
     if args.search > 0:
         search = LookaheadSearch(agent, n_simulations=args.search, horizon=args.horizon, radius=args.radius,
-                                 mode=args.search_mode)
+                                 mode=args.search_mode, ghost_model=args.ghost_model)
     return env, agent, stockastic, search
 
 
@@ -323,8 +332,8 @@ def main():
     env, agent, stockastic, search = player
     print(f"Loaded {checkpoint}")
     if search is not None:
-        print(f"Look-ahead search ({args.search_mode}): {args.search} simulations per move, "
-              f"horizon {args.horizon}, radius {args.radius}")
+        print(f"Look-ahead search ({args.search_mode}, {args.ghost_model} ghosts): {args.search} "
+              f"simulations per move, horizon {args.horizon}, radius {args.radius}")
 
     display = (args.display or args.games == 1) and not args.show_losses
     workers = 1 if display else max(1, min(args.workers, args.games))

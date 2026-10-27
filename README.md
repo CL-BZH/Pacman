@@ -89,11 +89,33 @@ python pacman_play.py -n 1000 --search 20 --workers 8    # 8 games played in par
 ```
 
 The search is slow (about 100 simulated games per searched move), so `--workers` plays several games
-in parallel. With 20 simulations per move, the search was evaluated on 1000 games (all the lost games
-and a sample of the won games replayed with search): the estimated win rate goes from 96.1% to about
-97.1% (± 0.5). Most of the lost games that are not saved are bad starts. The `value` mode
-(`--search-mode value`, play the move with the best simulated score) did not improve the win rate:
-with 20 simulations, the averages are too noisy and it changes many good moves by chance.
+in parallel.
+
+`--ghost-model` sets how the ghosts move in the simulations:
+- `chase` (default): worst case, the ghosts always move towards Pacman (along a shortest path) when he
+  has no power.
+- `estimated`: a ghost moves towards Pacman with a probability estimated from its observed moves since
+  the beginning of the game, and randomly otherwise.
+- `exact`: the game's own code for the ghosts, i.e. a perfect knowledge of their behaviour.
+
+`chase` and `estimated` do not use the game's code for the ghosts (they assume that the ghosts flee
+when Pacman has power): the search only uses what an agent can observe, while `exact` would give it
+knowledge that the agent does not have.
+
+With 20 simulations per move, the search was evaluated on 1000 games (all the lost games, and a sample
+of about 200 of the won games, replayed with search):
+
+| Ghost model | Estimated win rate |
+|---|---|
+| no search | 96.1% |
+| `exact` | 97.1% (± 0.5) |
+| `chase` | 97.4% (± 0.5) |
+| `estimated` | 97.6% (± 0.4) |
+
+The gain (about 1 to 1.5 points) does not come from knowing the ghosts' code. Most of the lost games
+that are not saved are bad starts. The `value` mode (`--search-mode value`, play the move with the
+best simulated score) did not improve the win rate: with 20 simulations, the averages are too noisy
+and it changes many good moves by chance.
 
 ## To train the model
 
