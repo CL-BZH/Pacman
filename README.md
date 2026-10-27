@@ -178,6 +178,11 @@ The actor-critic agent has the following features:
 
 Statistics for every game are saved in `./Tmp/pacman_a2c_training_log.csv`.
 
+Training curves of the agent saved in `./Trainings/A2C/PPO_1` (40 million steps on a Kaggle GPU;
+averages over the last 2000 games):
+
+![A2C/PPO training](./Media/a2c_ppo_training.png)
+
 ### DQN
 
 The DQN agent combines the improvements that matter most in practice:
@@ -273,21 +278,27 @@ pass, every environment performs one move, and finished games are restarted imme
 ##### About the A2C / PPO implementation
 
 `A2C.compute_gae()` computes the advantages with GAE:
-$$\delta_t = r_t + \gamma\,(1-d_t)\,V(s_{t+1}) - V(s_t), \qquad
-\hat{A}_t = \delta_t + \gamma\lambda\,(1-d_t)\,\hat{A}_{t+1}$$
-where $d_t = 1$ if the game ended after the action $a_t$. The value targets are $\hat{A}_t + V(s_t)$.
+```math
+\delta_t = r_t + \gamma\,(1-d_t)\,V(s_{t+1}) - V(s_t), \qquad
+\hat{A}_t = \delta_t + \gamma\lambda\,(1-d_t)\,\hat{A}_{t+1}
+```
+where $`d_t = 1`$ if the game ended after the action $`a_t`$. The value targets are $`\hat{A}_t + V(s_t)`$.
 For aborted (too long) games, the value of the reached state is added to the last reward, since the game did not really end.
 
 `A2C.update()` minimises, on each mini-batch,
-$$\mathcal{L} = -\frac{1}{B}\sum_t \min\big(\rho_t \hat{A}_t,\ \mathrm{clip}(\rho_t, 1-\epsilon, 1+\epsilon)\,\hat{A}_t\big)
-+ c_v \frac{1}{2B}\sum_t \big(\hat{A}_t + V_{old}(s_t) - V(s_t)\big)^2 - c_e\, \mathcal{H}(\pi)$$
-with $\rho_t = \pi(a_t|s_t) / \pi_{old}(a_t|s_t)$ and the advantages normalised over the mini-batch.
+```math
+\mathcal{L} = -\frac{1}{B}\sum_t \min\big(\rho_t \hat{A}_t,\ \mathrm{clip}(\rho_t, 1-\epsilon, 1+\epsilon)\,\hat{A}_t\big)
++ c_v \frac{1}{2B}\sum_t \big(\hat{A}_t + V_{old}(s_t) - V(s_t)\big)^2 - c_e\, \mathcal{H}(\pi)
+```
+with $`\rho_t = \pi(a_t|s_t) / \pi_{old}(a_t|s_t)`$ and the advantages normalised over the mini-batch.
 
 ##### About the DQN implementation
 
 `DQN.learn()` uses Double DQN n-step targets
-$$y = \sum_{k=0}^{m-1}\gamma^k r_{t+k} + \gamma^m (1-d)\, Q_{target}\big(s_{t+m}, \arg\max_a Q(s_{t+m}, a)\big)$$
-with the Huber loss, and updates the target network with $\theta' \leftarrow \tau\theta + (1-\tau)\theta'$.
+```math
+y = \sum_{k=0}^{m-1}\gamma^k r_{t+k} + \gamma^m (1-d)\, Q_{target}\big(s_{t+m}, \arg\max_a Q(s_{t+m}, a)\big)
+```
+with the Huber loss, and updates the target network with $`\theta' \leftarrow \tau\theta + (1-\tau)\theta'`$.
 
 ## TODO
 <ul>
