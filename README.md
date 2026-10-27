@@ -64,6 +64,37 @@ Each game is played with its own random seed (printed at the end), so a set of g
 again identically with `--seed`. With `--show-losses N`, the games are first played without display,
 then up to `N` of the lost games are replayed with display, to see how Pacman loses.
 
+With several games, the lost games are also classified by cause:
+- `off-by-one`: Pacman moved onto a ghost on the move where his power ran out. The power credit is
+  decreased at the beginning of Pacman's move, before the collision test, so with 1 move of power
+  left, moving onto a ghost kills Pacman.
+- `power-ended`: Pacman was caught at most 3 moves after his power ran out (other cases).
+- `bad-start`: Pacman was caught in the first 5 moves of the game, without having had any power.
+- `other`: all the other lost games.
+
+`--cause` selects the games to replay, e.g. `python pacman_play.py -n 1000 --show-losses --cause off-by-one`.
+
+### Look-ahead search
+
+With `--search N`, a look-ahead search (`pacman_search.py`) checks the agent's moves when a ghost is
+close (at most `--radius` cells, 5 by default). Each possible move is simulated `N` times on copies of
+the game: the move is played, then the trained agent plays alone for at most `--horizon` moves (15 by
+default). In the default `safety` mode, the agent's move is kept unless Pacman dies in clearly more
+simulations with it (15% more) than with another move; the search then plays the move with the
+fewest deaths. It corrects the agent when it walks into a trap, which the network alone does not
+always see.
+
+```bash
+python pacman_play.py -n 1000 --search 20 --workers 8    # 8 games played in parallel
+```
+
+The search is slow (about 100 simulated games per searched move), so `--workers` plays several games
+in parallel. With 20 simulations per move, the search was evaluated on 1000 games (all the lost games
+and a sample of the won games replayed with search): the estimated win rate goes from 96.1% to about
+97.1% (± 0.5). Most of the lost games that are not saved are bad starts. The `value` mode
+(`--search-mode value`, play the move with the best simulated score) did not improve the win rate:
+with 20 simulations, the averages are too noisy and it changes many good moves by chance.
+
 ## To train the model
 
 To train the model run the command below in a terminal.
@@ -195,6 +226,8 @@ and A2C (`ActorCriticCNN`), and for the selection of the device (GPU or CPU).
 `pacman_env.py` is dedicated for the definition of the Pacman environment.
 
 `pacman_conf.py` just contain a dataclass used for the configuration of the game.
+
+`pacman_search.py` contains the look-ahead search used by `pacman_play.py --search`.
 
 And we already talked about `pacman_play.py` and `pacman_train.py`.
 

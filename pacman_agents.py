@@ -89,7 +89,12 @@ class PacmanAgent(ABC):
         '''
         Current image of an environment as a (channels, height, width) float32 array.
         '''
-        env = self.pacman_envs[env_idx]
+        return self.observation_of(self.pacman_envs[env_idx])
+
+    def observation_of(self, env):
+        '''
+        Same as observation() for any environment (e.g. a copy used for a simulation).
+        '''
         img = env.feature_image if self.features else env.rgb_image
         if self.grayscale:
             scale = np.array([0.2989, 0.5870, 0.1140], dtype='float32')

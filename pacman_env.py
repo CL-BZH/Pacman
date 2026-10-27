@@ -73,6 +73,7 @@ class PacmanEnvironment:
         self.dead_ghosts = None
         self.last_eaten_cookie = {'pos': (0,0), 'power': False, 'steps': 0}
         self.power_cookies = None # Cookies that give power to eat ghost
+        self.died_on_pacman_move = False # True if Pacman died by moving onto a ghost
         self.fill_map(start_pacman_pos, start_ghosts_pos)
         self.map_actions = np.array(self._init_map_actions())
         self.image_channels = 4 # RGB channels + 1
@@ -93,6 +94,7 @@ class PacmanEnvironment:
         self.power_credit = 0
         self.game_over = False
         self.n_eaten_power_cookies = 0
+        self.died_on_pacman_move = False
         self.last_eaten_cookie = {'pos': (0,0), 'power': False, 'steps': 0}
         if ghosts_start_pos == None:
             ghosts_start_pos = self.start_ghosts_pos
@@ -302,6 +304,7 @@ class PacmanEnvironment:
         self.power_credit = max(0, self.power_credit - 1) # Decrease the power credit by 1 at each move
         
         reward += self._eat_ghost() # Eat a ghost if has power otherwise die
+        self.died_on_pacman_move = self.dead # Pacman moved onto a ghost while having no power
         if self.dead == False:
             reward += self._eat_cookie() # eat a cookie is there is one
         return reward
@@ -344,6 +347,20 @@ class PacmanEnvironment:
         
         self.cumulated_reward += reward
         return reward
+
+    def clone(self):
+        '''
+        Fast copy of the environment for simulations (e.g. look-ahead search):
+        only what changes during a game is copied, the map and the
+        configuration are shared with the original.
+        '''
+        env = copy.copy(self)
+        env.cookies = list(self.cookies)
+        env.power_cookies = list(self.power_cookies)
+        env.visited_pos = set(self.visited_pos)
+        env.ghosts = [copy.copy(ghost) for ghost in self.ghosts]
+        env.dead_ghosts = list(self.dead_ghosts)
+        return env
 
     def get_all_actions(self):
         '''
