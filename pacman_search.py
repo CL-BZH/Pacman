@@ -30,13 +30,14 @@ How the ghosts move in the simulations ('ghost_model'):
       of the ghosts (A* chase with their configured aggressiveness, random moves
       otherwise, fleeing when Pacman has power): a perfect model of the game.
     - "chase": worst case, without using the game's code: when Pacman has no power,
-      every ghost moves along a shortest path towards Pacman at every move.
-    - "estimated": without using the game's code: a ghost moves along a shortest path
-      towards Pacman with probability p, and to a random neighbouring cell otherwise.
-      p is estimated for each ghost from the moves it made since the beginning of the
-      game (see GhostEstimator).
-    With "chase" and "estimated", the ghosts are assumed to flee from Pacman (move to
-    the neighbouring cell farthest from him) when he has power.
+      every ghost moves along a shortest path towards Pacman at every move. When he
+      has power, the ghosts move randomly (no assumption on how edible ghosts behave).
+    - "estimated": without using the game's code: when Pacman has no power, a ghost
+      moves along a shortest path towards Pacman with probability p_chase, and to a
+      random neighbouring cell otherwise. When he has power, it moves away from him
+      with probability p_flee, and randomly otherwise. p_chase and p_flee are estimated
+      for each ghost from the moves it made since the beginning of the game (see
+      GhostEstimator).
 """
 
 import numpy as np
@@ -74,11 +75,13 @@ def distance_table(env):
 
 class GhostEstimator:
     '''
-    Estimates, for each ghost, the probability p that it moves towards Pacman, from its
-    observed moves (only when Pacman has no power). Model of a move: towards Pacman
-    (along a shortest path) with probability p, else to a random neighbouring cell
-    (uniformly). A move "towards Pacman" reduces the distance to Pacman's position before
-    or after his move (the ghosts can move before or after Pacman).
+    Estimates, for each ghost, from its observed moves:
+        - p_chase: probability that it moves towards Pacman when he has no power,
+        - p_flee: probability that it moves away from Pacman when he has power.
+    Model of a move: towards (resp. away from) Pacman with probability p, else to a random
+    neighbouring cell (uniformly). A move "towards" (resp. "away from") Pacman decreases
+    (resp. increases) the distance to Pacman's position before or after his move (the
+    ghosts can move before or after Pacman).
     p is the maximum a posteriori estimate with a Beta(2, 2) prior (p = 0.5 without observation).
     '''
     def __init__(self, dist):
@@ -93,14 +96,23 @@ class GhostEstimator:
     def _towards(self, cell, ghost_pos, pacman_positions):
         return any(self.dist[cell][p] < self.dist[ghost_pos][p] for p in pacman_positions)
 
+    def _away(self, cell, ghost_pos, pacman_positions):
+        return any(self.dist[cell][p] > self.dist[ghost_pos][p] for p in pacman_positions)
+
     def observe(self, env, before):
         '''
             env: the real game after a move.
             before: (Pacman's position, power credit, {ghost id: position}) before the move.
         '''
         pacman_before, power_before, ghosts_before = before
-        if env.dead or power_before > 0 or env.power_credit > 0:
+        if env.dead:
             return
+        if power_before == 0 and env.power_credit == 0:
+            kind, rule = "chase", self._towards
+        elif power_before > 1 and env.power_credit > 0:
+            kind, rule = "flee", self._away
+        else:
+            return # the power starts or ends during this move
         pacman_positions = (pacman_before, env.current_pacman_pos)
         for ghost in env.ghosts:
             if ghost.id not in ghosts_before:
@@ -109,23 +121,25 @@ class GhostEstimator:
             if g0 in pacman_positions:
                 continue
             cells = neighbour_cells(env, g0)
-            towards = [c for c in cells if self._towards(c, g0, pacman_positions)]
-            q = len(towards) / len(cells)  # probability that a random move goes towards Pacman
+            matching = [c for c in cells if rule(c, g0, pacman_positions)]
+            q = len(matching) / len(cells)  # probability that a random move matches
             if q in (0., 1.):
                 continue # not informative
-            if ghost.id not in self.log_post:
-                self.log_post[ghost.id] = np.log(self.grid * (1 - self.grid) + 1e-12) # Beta(2, 2) prior
-                self.n_obs[ghost.id] = 0
-            if tuple(ghost.pos) in towards:
-                self.log_post[ghost.id] += np.log(self.grid + (1 - self.grid) * q)
+            key = (kind, ghost.id)
+            if key not in self.log_post:
+                self.log_post[key] = np.log(self.grid * (1 - self.grid) + 1e-12) # Beta(2, 2) prior
+                self.n_obs[key] = 0
+            if tuple(ghost.pos) in matching:
+                self.log_post[key] += np.log(self.grid + (1 - self.grid) * q)
             else:
-                self.log_post[ghost.id] += np.log((1 - self.grid) * (1 - q) + 1e-12)
-            self.n_obs[ghost.id] += 1
+                self.log_post[key] += np.log((1 - self.grid) * (1 - q) + 1e-12)
+            self.n_obs[key] += 1
 
-    def p(self, ghost_id):
-        if ghost_id not in self.log_post:
+    def p(self, ghost_id, kind="chase"):
+        key = (kind, ghost_id)
+        if key not in self.log_post:
             return 0.5
-        return float(self.grid[np.argmax(self.log_post[ghost_id])])
+        return float(self.grid[np.argmax(self.log_post[key])])
 
 
 def snapshot(env):
@@ -180,10 +194,11 @@ class LookaheadSearch:
         if self.estimator is not None:
             self.estimator.observe(env, before)
 
-    def _model_ghost(self, ghost, p_chase):
+    def _model_ghost(self, ghost, p_chase, p_flee):
         '''
-        Replace the move of a simulated ghost by the generic model (chase with
-        probability p_chase, random move otherwise, flee when Pacman has power).
+        Replace the move of a simulated ghost by the generic model: when Pacman has
+        no power, towards him with probability p_chase; when he has power, away from
+        him with probability p_flee; random move otherwise.
         Uses only np.random (for the common random numbers of the simulations).
         '''
         dist = self.dist
@@ -192,8 +207,11 @@ class LookaheadSearch:
             cells = neighbour_cells(env, pos)
             pacman = env.current_pacman_pos
             if env.power_credit > 0:
-                far = max(dist[c][pacman] for c in cells)
-                choices = [c for c in cells if dist[c][pacman] == far]
+                if np.random.random() < p_flee:
+                    far = max(dist[c][pacman] for c in cells)
+                    choices = [c for c in cells if dist[c][pacman] == far]
+                else:
+                    choices = cells
             elif np.random.random() < p_chase:
                 near = min(dist[c][pacman] for c in cells)
                 choices = [c for c in cells if dist[c][pacman] == near]
@@ -262,8 +280,11 @@ class LookaheadSearch:
                 sim_env = env.clone()
                 if self.ghost_model != "exact":
                     for ghost in sim_env.ghosts:
-                        p = 1. if self.ghost_model == "chase" else self.estimator.p(ghost.id)
-                        self._model_ghost(ghost, p)
+                        if self.ghost_model == "chase":
+                            self._model_ghost(ghost, p_chase=1., p_flee=0.)
+                        else:
+                            self._model_ghost(ghost, p_chase=self.estimator.p(ghost.id, "chase"),
+                                              p_flee=self.estimator.p(ghost.id, "flee"))
                 sims.append({"move": move, "env": sim_env, "frames": deque(frames, maxlen=frames.maxlen),
                              "rng": np.random.RandomState(sim_seeds[k]).get_state(),
                              "score": 0., "discount": 1.})

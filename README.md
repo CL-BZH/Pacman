@@ -93,14 +93,17 @@ in parallel.
 
 `--ghost-model` sets how the ghosts move in the simulations:
 - `chase` (default): worst case, the ghosts always move towards Pacman (along a shortest path) when he
-  has no power.
-- `estimated`: a ghost moves towards Pacman with a probability estimated from its observed moves since
-  the beginning of the game, and randomly otherwise.
+  has no power, and randomly when he has power.
+- `estimated`: when Pacman has no power, a ghost moves towards him with probability `p_chase`, and
+  randomly otherwise; when he has power, it moves away from him with probability `p_flee`, and
+  randomly otherwise. Both probabilities are estimated for each ghost from its observed moves since
+  the beginning of the game.
 - `exact`: the game's own code for the ghosts, i.e. a perfect knowledge of their behaviour.
 
-`chase` and `estimated` do not use the game's code for the ghosts (they assume that the ghosts flee
-when Pacman has power): the search only uses what an agent can observe, while `exact` would give it
-knowledge that the agent does not have.
+`chase` and `estimated` do not use the game's code for the ghosts: the search only uses what an agent
+can observe, while `exact` would give it knowledge that the agent does not have. (Over many games, the
+estimates are about 0.73 and 0.64 for `p_chase`, close to the configured aggressiveness levels 0.74 and
+0.64, and about 0.08 for `p_flee`: edible ghosts move almost randomly.)
 
 With 20 simulations per move, the search was evaluated on 1000 games (all the lost games, and a sample
 of about 200 of the won games, replayed with search):
@@ -109,8 +112,8 @@ of about 200 of the won games, replayed with search):
 |---|---|
 | no search | 96.1% |
 | `exact` | 97.1% (± 0.5) |
-| `chase` | 97.4% (± 0.5) |
-| `estimated` | 97.6% (± 0.4) |
+| `chase` | 97.5% (± 0.5) |
+| `estimated` | 97.7% (± 0.3) |
 
 The gain (about 1 to 1.5 points) does not come from knowing the ghosts' code. Most of the lost games
 that are not saved are bad starts. The `value` mode (`--search-mode value`, play the move with the
