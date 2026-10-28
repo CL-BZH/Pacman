@@ -84,6 +84,13 @@ simulations with it (15% more) than with another move; the search then plays the
 fewest deaths. It corrects the agent when it walks into a trap, which the network alone does not
 always see.
 
+> **The search does not know how the ghosts really behave.** By default (`--ghost-model chase`), the
+> simulated ghosts do not use the game's code for the ghosts: they always move towards Pacman when he
+> has no power (worst case), and randomly when he has power. The search only uses what the agent can
+> observe (the positions of the ghosts, of Pacman and of the cookies, Pacman's power) and the rules of
+> the game for Pacman (moves, cookies, power, collisions). The ghosts' real behaviour (`exact`) is used
+> only if it is explicitly chosen, and it was only used as a reference for comparison (see below).
+
 ```bash
 python pacman_play.py -n 1000 --search 20 --workers 8    # 8 games played in parallel
 ```
@@ -226,6 +233,8 @@ in its DAgger form). Each iteration:
    does not change. The value head learns the discounted returns observed in the games.
 
 The games of each iteration are played without search, so their results measure the agent alone.
+**As for `pacman_play.py --search`, the search uses the `chase` ghost model by default: the labels that
+the network learns do not come from any knowledge of the ghosts' real behaviour.**
 It starts from the agent in `Trainings/A2C/PPO_1`:
 ```bash
 python pacman_expert.py --iterations 10 --games 2000 --workers 4    # see --help for the options
