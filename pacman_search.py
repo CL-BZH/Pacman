@@ -264,7 +264,7 @@ class LookaheadSearch:
             return agent_action
         moves = self.candidate_moves(env)
         if len(moves) == 1:
-            return moves[0]
+            return agent_action # all the moves lead to the same cell
         # The agent's move, as one of the candidates (same target cell)
         i, j = env.current_pacman_pos
         target = lambda m: tuple(env.map_actions[i, j, env.actions[self.agent.actions[m]][0]])

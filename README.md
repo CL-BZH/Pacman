@@ -214,6 +214,31 @@ the progress of the training. Below is an example of the plotting of the trainin
 evolution.
 ![training_progress](./Media/training.png)
 
+### Expert iteration: the search as teacher
+
+`pacman_expert.py` trains the A2C agent with the look-ahead search as teacher (expert iteration,
+in its DAgger form). Each iteration:
+1. The current agent plays games alone (in parallel processes). At each move where a ghost is
+   close, the search (safety mode) gives the move it would play: as the games are played by the
+   agent, the search labels exactly the situations the agent gets into, including its mistakes.
+2. The policy learns to play the search's move where a ghost is close (with a larger weight where
+   the search disagrees with the agent), and its own move elsewhere, so that the rest of its play
+   does not change. The value head learns the discounted returns observed in the games.
+
+The games of each iteration are played without search, so their results measure the agent alone.
+It starts from the agent in `Trainings/A2C/PPO_1`:
+```bash
+python pacman_expert.py --iterations 10 --games 2000 --workers 4    # see --help for the options
+python pacman_play.py -c Tmp/expert/pacman_expert_final.pth -n 1000
+```
+In the notebooks, set `AGENT = "expert"`.
+
+A first small test on CPU (3 iterations of 750 games) did not change the win rate of the agent alone
+(96.0% before, 95.5% to 96.1% after, on 2000 games): the search disagrees with the agent only about
+0.3 times per game, so an iteration gives a few hundred corrections. The network learns them (the
+search disagrees less often after training: 0.33 then 0.24 times per game), but more games are needed
+to see an effect on the win rate.
+
 ## Some explanations about the software
 
 ### The files
@@ -258,6 +283,8 @@ and A2C (`ActorCriticCNN`), and for the selection of the device (GPU or CPU).
 `pacman_conf.py` just contain a dataclass used for the configuration of the game.
 
 `pacman_search.py` contains the look-ahead search used by `pacman_play.py --search`.
+
+`pacman_expert.py` trains the A2C agent with the look-ahead search as teacher (expert iteration).
 
 And we already talked about `pacman_play.py` and `pacman_train.py`.
 
