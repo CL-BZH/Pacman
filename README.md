@@ -242,11 +242,25 @@ python pacman_play.py -c Tmp/expert/pacman_expert_final.pth -n 1000
 ```
 In the notebooks, set `AGENT = "expert"`.
 
-A first small test on CPU (3 iterations of 750 games) did not change the win rate of the agent alone
-(96.0% before, 95.5% to 96.1% after, on 2000 games): the search disagrees with the agent only about
-0.3 times per game, so an iteration gives a few hundred corrections. The network learns them (the
-search disagrees less often after training: 0.33 then 0.24 times per game), but more games are needed
-to see an effect on the win rate.
+Result of a training on Kaggle (10 iterations of 2000 games, search with 10 simulations and a horizon of
+10, `chase` ghosts), starting from the agent in `Trainings/A2C/PPO_1`. The agent obtained is saved in
+`Trainings/A2C/Expert_1`. On the same 1000 evaluation games, without search:
+
+| Agent, no search | Games won |
+|---|---|
+| `PPO_1` (start) | 95.8% |
+| `Expert_1` (after 10 iterations) | 96.7% |
+
+![Expert iteration](./Media/expert_iteration.png)
+
+Each point of the left plot is measured on a different set of 2000 games (± 0.4 points), so its ups and
+downs are mostly noise. The right plot shows the clearer effect: the search disagrees with the agent half
+as often after training (0.27 then 0.12 times per game), and the network reproduces 76% of the search's
+corrections. The gain (about +0.7 to +0.9 points, ± 0.6 on 1000 games) is about half of what the search
+gives when it is used during the games (97.5% to 97.7%, see above).
+
+One iteration took about one hour: almost all of it is the collection of the games with search, which
+runs on the CPU (4 processes), so the GPU is hardly used.
 
 ## Some explanations about the software
 
