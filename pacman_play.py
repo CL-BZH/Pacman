@@ -284,6 +284,8 @@ def play_games(player, games, base_seed, args, display=False, progress=True):
     Returns one record (dict) per game, and the search counters.
     '''
     env, agent, stockastic, search = player
+    # Search counters at the start, to return only those of these games
+    start_counters = (search.n_searches, search.n_changed) if search is not None else (0, 0)
     records = []
     for i in games:
         if progress:
@@ -297,7 +299,8 @@ def play_games(player, games, base_seed, args, display=False, progress=True):
         records.append({"game": i + 1, "seed": base_seed + i, "lost": has_lost_game, "aborted": aborted,
                         "ghosts": n_ghost, "power_cookies": n_eaten_power_cookies, "cause": cause,
                         "moves": env.n_steps, "weights": weights if has_lost_game else None})
-    counters = (search.n_searches, search.n_changed) if search is not None else (0, 0)
+    counters = ((search.n_searches - start_counters[0], search.n_changed - start_counters[1])
+                if search is not None else (0, 0))
     return records, counters
 
 
