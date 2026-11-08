@@ -166,12 +166,43 @@ best action of an agent depends on what another does).
 \begin{pacman}{Learning ghosts}{ghosts-team}
   The ghosts of \code{ghost\_agents.py} follow fixed rules. Making them
   learn turns Pacman into a two-team zero-sum Markov game: Pacman against
-  a cooperative team of ghosts with the opposite reward. Training them with
-  QMIX or MAPPO against a frozen PPO Pacman, then retraining Pacman against
-  the new ghosts, is self-play between teams, with the risk of cycling
-  discussed above; a league of past ghosts and past Pacmans is the standard
-  remedy.
+  a cooperative team of ghosts with the opposite reward. The obvious scheme
+  alternates: train the ghosts (with QMIX or MAPPO) against a frozen PPO
+  Pacman, then retrain Pacman against the new ghosts, and so on. Each side
+  then learns to beat only the opponent it faces now, and the training can
+  cycle. For example, the ghosts learn to guard the power cookies, so
+  Pacman learns to clear the far corners first; the ghosts then spread out
+  to cover the corners, so Pacman learns to rush the power cookies, which
+  the ghosts learn to guard again\dots{} Each version beats the previous
+  one and forgets how to beat the older ones, as in rock--paper--scissors.
+
+  The standard remedy is a \emph{league}: a copy of each side is saved
+  regularly, and each side trains against opponents drawn from all the
+  saved copies, not only the latest:
+  \begin{enumerate}[nosep]
+    \item train Pacman against the rule-based ghosts; save it as $P_0$;
+    \item train ghosts against $P_0$; save them as $G_0$;
+    \item train Pacman against opponents drawn from $\{$rule-based ghosts,
+      $G_0\}$; save it as $P_1$;
+    \item train ghosts against opponents drawn from $\{P_0, P_1\}$; save them
+      as $G_1$; and so on, the pools growing at each round.
+  \end{enumerate}
+  A Pacman that forgets how to beat the ghosts of an earlier generation
+  loses when they are drawn, and relearns it. The opponents can be drawn
+  uniformly, or more often among those the current agent loses against
+  (as in AlphaStar's league); the rule-based ghosts stay in the pool, so
+  that Pacman keeps mastering the original game.
 \end{pacman}
+
+\begin{intuition}
+  Training against the latest opponent only is chasing a moving target:
+  the agent adapts to the opponent's current habits, not to the game.
+  Training against a growing collection of past opponents makes forgetting
+  costly, and pushes each side towards strategies that are good against
+  everything seen so far. In the limit this is fictitious play, which
+  converges to an equilibrium in zero-sum games where plain alternation can
+  cycle forever.
+\end{intuition}
 
 \section{Summary}
 
