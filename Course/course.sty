@@ -1,0 +1,105 @@
+% course.sty -- style of the course "Reinforcement Learning with Pacman"
+%
+% Colour code of the boxes:
+%   blue   = definitions        red    = theorems, lemmas, corollaries
+%   amber  = propositions       green  = Pacman examples
+%   grey   = remarks            violet = algorithms
+%   teal (left rule only) = intuition ("In words")
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{course}[2026/11/08 Reinforcement Learning with Pacman]
+
+\RequirePackage[T1]{fontenc}
+\RequirePackage[utf8]{inputenc}
+\RequirePackage{lmodern}
+\RequirePackage{microtype}
+\RequirePackage[a4paper, margin=2.6cm]{geometry}
+\RequirePackage{amsmath, amssymb, amsthm, mathtools}
+\RequirePackage{bm}
+\RequirePackage{xcolor}
+\RequirePackage{booktabs}
+\RequirePackage{enumitem}
+\RequirePackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, calc, shapes, fit}
+\RequirePackage[most]{tcolorbox}
+\RequirePackage{algorithm}
+\RequirePackage[noend]{algpseudocode}
+\RequirePackage{listings}
+\RequirePackage[colorlinks=true, linkcolor=blue!60!black,
+  citecolor=green!45!black, urlcolor=violet!70!black]{hyperref}
+\RequirePackage[nameinlink, capitalise]{cleveref}
+
+% ---------------------------------------------------------------- colours
+\definecolor{defblue}{RGB}{30, 90, 170}
+\definecolor{thmred}{RGB}{175, 35, 35}
+\definecolor{propamber}{RGB}{200, 130, 0}
+\definecolor{pacgreen}{RGB}{30, 130, 60}
+\definecolor{remgrey}{RGB}{105, 105, 105}
+\definecolor{algviolet}{RGB}{110, 50, 150}
+\definecolor{intteal}{RGB}{0, 120, 130}
+
+% ---------------------------------------------------------------- boxes
+\tcbset{
+  coursebox/.style={enhanced, breakable, sharp corners=south,
+    boxrule=0.6pt, left=6pt, right=6pt, top=4pt, bottom=4pt,
+    fonttitle=\bfseries, separator sign={.}, description delimiters={(}{)},
+    before skip=10pt, after skip=10pt},
+}
+\newtcbtheorem[number within=chapter]{definition}{Definition}{coursebox,
+  label type=definition, colback=defblue!5!white, colframe=defblue}{def}
+\newtcbtheorem[use counter from=definition]{theorem}{Theorem}{coursebox,
+  label type=theorem, colback=thmred!5!white, colframe=thmred}{thm}
+\newtcbtheorem[use counter from=definition]{lemma}{Lemma}{coursebox,
+  label type=lemma, colback=thmred!3!white, colframe=thmred!80!black}{lem}
+\newtcbtheorem[use counter from=definition]{corollary}{Corollary}{coursebox,
+  label type=corollary, colback=thmred!3!white,
+  colframe=thmred!80!black}{cor}
+\newtcbtheorem[use counter from=definition]{proposition}{Proposition}{%
+  coursebox, label type=proposition, colback=propamber!6!white,
+  colframe=propamber}{prop}
+\newtcbtheorem[use counter from=definition]{pacman}{Pacman}{coursebox,
+  label type=pacman, colback=pacgreen!5!white, colframe=pacgreen}{pac}
+\newtcbtheorem[use counter from=definition]{remark}{Remark}{coursebox,
+  label type=remark, colback=remgrey!5!white, colframe=remgrey}{rem}
+\newtcolorbox{algobox}[1]{coursebox, colback=algviolet!4!white,
+  colframe=algviolet, title={#1}}
+% intuition behind a formula: unnumbered, light, a rule on the left
+\newtcolorbox{intuition}{enhanced, breakable, frame hidden,
+  colback=intteal!5!white, borderline west={2pt}{0pt}{intteal},
+  sharp corners, left=8pt, right=6pt, top=3pt, bottom=3pt,
+  before skip=8pt, after skip=8pt,
+  before upper={\textbf{\textcolor{intteal}{In words.}}\ }}
+
+% cleveref names for the tcolorbox theorems (see the "label type" keys)
+\crefname{definition}{Definition}{Definitions}
+\crefname{theorem}{Theorem}{Theorems}
+\crefname{lemma}{Lemma}{Lemmas}
+\crefname{corollary}{Corollary}{Corollaries}
+\crefname{proposition}{Proposition}{Propositions}
+\crefname{pacman}{Example}{Examples}
+\crefname{remark}{Remark}{Remarks}
+
+% ---------------------------------------------------------------- code
+\lstset{basicstyle=\ttfamily\small, columns=fullflexible, keepspaces=true,
+  frame=single, rulecolor=\color{remgrey!50}, backgroundcolor=\color{gray!4},
+  keywordstyle=\color{defblue}\bfseries, commentstyle=\color{pacgreen},
+  stringstyle=\color{thmred!80!black}, language=Python, breaklines=true,
+  showstringspaces=false}
+
+% ---------------------------------------------------------------- notation
+\newcommand{\States}{\mathcal{S}}
+\newcommand{\Actions}{\mathcal{A}}
+\newcommand{\Rewards}{\mathcal{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\T}{\mathcal{T}}
+\newcommand{\given}{\,\middle|\,}
+\newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+\newcommand{\abs}[1]{\left\lvert #1 \right\rvert}
+\newcommand{\argmax}{\operatorname*{arg\,max}}
+\newcommand{\argmin}{\operatorname*{arg\,min}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\repo}[1]{\texttt{#1}}
+
+\endinput
