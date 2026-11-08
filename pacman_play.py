@@ -19,7 +19,7 @@ Examples:
     python pacman_play.py --help                # all the options
 """
 
-from pacman_training import pacman_conf  # same game configuration as for the training
+from pacman_training import GAMES  # same game configurations as for the training
 from pacman_env import PacmanEnvironment
 from pacman_agents import DQN_PacmanAgent
 from pacman_agents import A2C_PacmanAgent
@@ -41,8 +41,10 @@ from pacman_search import LookaheadSearch, snapshot
 # Default trained agents (relative to the repository folder)
 REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CHECKPOINTS = {
-    "a2c": os.path.join("Trainings", "A2C", "PPO_1", "pacman_a2c_final.pth"),
-    "dqn": os.path.join("Trainings", "DQN", "pacman_dqn_final.pth"),
+    ("v1", "a2c"): os.path.join("Trainings", "A2C", "PPO_1", "pacman_a2c_final.pth"),
+    ("v1", "dqn"): os.path.join("Trainings", "DQN", "pacman_dqn_final.pth"),
+    ("v2", "a2c"): os.path.join("Trainings", "A2C", "PPO_v2", "pacman_a2c_final.pth"),
+    ("v2", "dqn"): os.path.join("Trainings", "DQN", "v2", "pacman_dqn_final.pth"),
 }
 
 
@@ -177,7 +179,9 @@ def parse_args():
                         help="type of agent")
     parser.add_argument("-c", "--checkpoint", default=None,
                         help="network parameters (.pth); default: "
-                             + ", ".join(f"{k}: {v}" for k, v in DEFAULT_CHECKPOINTS.items()))
+                             + ", ".join(f"{g} {a}: {v}" for (g, a), v in DEFAULT_CHECKPOINTS.items()))
+    parser.add_argument("-g", "--game", choices=list(GAMES), default="v1",
+                        help="game version (see pacman_training.py); must be the one the agent was trained on")
     parser.add_argument("-n", "--games", type=int, default=1,
                         help="number of games to play")
     parser.add_argument("-f", "--frames", type=int, default=2,
@@ -262,7 +266,7 @@ def make_player(args, checkpoint, quiet=False):
         with contextlib.redirect_stdout(io.StringIO()):
             return make_player(args, checkpoint)
     # Same game configuration as for the training
-    env = PacmanEnvironment(pacman_conf)
+    env = PacmanEnvironment(GAMES[args.game])
     if args.agent == "a2c":
         agent = A2C_PacmanAgent([env], n_frames=args.frames)
         stockastic = not args.greedy
@@ -270,7 +274,12 @@ def make_player(args, checkpoint, quiet=False):
         agent = DQN_PacmanAgent([env], n_frames=args.frames)
         agent.epsilon = 0.
         stockastic = False
-    agent.load(checkpoint)
+    try:
+        agent.load(checkpoint)
+    except RuntimeError:
+        other = [g for g in GAMES if g != args.game]
+        sys.exit(f"{checkpoint} does not fit the game {args.game} (it was trained on another game"
+                 f" or with another number of frames): try --game {' or --game '.join(other)}")
     search = None
     if args.search > 0:
         search = LookaheadSearch(agent, n_simulations=args.search, horizon=args.horizon, radius=args.radius,
@@ -328,7 +337,7 @@ def main():
     # Each game gets its own seed so that any game can be replayed identically
     base_seed = args.seed if args.seed is not None else random.SystemRandom().randrange(10**6)
 
-    checkpoint = args.checkpoint or os.path.join(REPO_DIR, DEFAULT_CHECKPOINTS[args.agent])
+    checkpoint = args.checkpoint or os.path.join(REPO_DIR, DEFAULT_CHECKPOINTS[(args.game, args.agent)])
     if not os.path.isfile(checkpoint):
         sys.exit(f"Checkpoint not found: {checkpoint}\n"
                  f"Use -c to give the checkpoint to load (a training saves its checkpoints "

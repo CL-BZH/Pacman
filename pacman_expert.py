@@ -36,7 +36,7 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 
-from pacman_training import pacman_conf
+from pacman_training import GAMES
 from pacman_env import PacmanEnvironment
 from pacman_agents import A2C_PacmanAgent
 from pacman_search import LookaheadSearch, snapshot
@@ -50,6 +50,8 @@ def parse_args():
                                                  "look-ahead search as teacher.",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("-c", "--checkpoint", default=DEFAULT_CHECKPOINT, help="A2C agent to start from")
+    parser.add_argument("-g", "--game", choices=list(GAMES), default="v1",
+                        help="game version (see pacman_training.py); must be the one the agent was trained on")
     parser.add_argument("--iterations", type=int, default=10, help="number of iterations")
     parser.add_argument("--games", type=int, default=1000, help="games played per iteration")
     parser.add_argument("-w", "--workers", type=int, default=4, help="processes playing games in parallel")
@@ -81,7 +83,8 @@ def parse_args():
 
 # The states are stored as uint8: the feature planes are binary except Pacman's
 # power (power_credit / max_power_credit), so multiplying by max_power_credit gives integers.
-POWER_SCALE = pacman_conf.max_power_credit
+def power_scale(args):
+    return GAMES[args.game].max_power_credit
 
 _agent = None
 _search = None
@@ -98,7 +101,7 @@ def _init_worker(args, device):
     global _agent, _search, _args
     torch.set_num_threads(1)
     _args = args
-    env = PacmanEnvironment(pacman_conf)
+    env = PacmanEnvironment(GAMES[args.game])
     _agent = _quiet(A2C_PacmanAgent, [env], device=device)
     _search = LookaheadSearch(_agent, n_simulations=args.sims, horizon=args.horizon, radius=args.radius,
                               mode="safety", ghost_model=args.ghost_model)
@@ -131,7 +134,7 @@ def play_labelled_game(agent, search, seed, args, label=True):
         if label and env.ghosts and search.ghost_nearby(env):
             target = search.select_action(env, agent.frame_stacks[0], action)
             is_searched = True
-        states.append(np.rint(state[0].numpy() * POWER_SCALE).astype(np.uint8))
+        states.append(np.rint(state[0].numpy() * power_scale(args)).astype(np.uint8))
         labels.append(target)
         changed.append(target != action)
         searched.append(is_searched)
@@ -200,7 +203,7 @@ def train(net, optimizer, datasets, args, device):
         perm = np.random.permutation(n)
         for k in range(0, n, args.batch):
             idx = perm[k:k + args.batch]
-            x = torch.from_numpy(states[idx].astype(np.float32) / POWER_SCALE).to(device)
+            x = torch.from_numpy(states[idx].astype(np.float32) / power_scale(args)).to(device)
             y = torch.from_numpy(labels[idx]).to(device)
             w = torch.from_numpy(weights[idx]).to(device)
             ret = torch.from_numpy(returns[idx]).to(device)
@@ -219,7 +222,7 @@ def train(net, optimizer, datasets, args, device):
     net.eval()
     if changed.any():
         with torch.no_grad():
-            x = torch.from_numpy(states[changed].astype(np.float32) / POWER_SCALE).to(device)
+            x = torch.from_numpy(states[changed].astype(np.float32) / power_scale(args)).to(device)
             pred = net(x)[0].argmax(dim=1).cpu().numpy()
         stats["accuracy_changed"] = float(np.mean(pred == labels[changed]))
     stats["policy_loss"] /= max(1, n_batches)
@@ -248,7 +251,7 @@ def main():
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    env = PacmanEnvironment(pacman_conf)
+    env = PacmanEnvironment(GAMES[args.game])
     agent = _quiet(A2C_PacmanAgent, [env], device=str(device))
     agent.load(args.checkpoint)
     net = agent.A2C.a2c_net
