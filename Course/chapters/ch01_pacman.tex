@@ -276,10 +276,11 @@ usually eat both ghosts early, after which the game is only about cookies.
 Game \code{v2} makes the whole game matter: a bigger maze
 (\code{pacman\_map4}, $17 \times 19$ cells, $163$ open), three ghosts, four
 power cookies, a power of $10$ moves, a reward of $5$ for eating a ghost,
-ghosts that \emph{come back} (an eaten ghost reappears $15$ moves after
-being eaten, and not before Pacman's power has ended, on a random cell at
-least $6$ moves away from Pacman), and ghosts whose random moves prefer
-their current direction (\cref{rem:ghost-heading}). Unless stated
+ghosts that start in a \emph{ghost house} in the middle of the maze and
+\emph{come back} to it when eaten (once Pacman's power has ended, each
+ghost in the house leaves it with probability $0.1$ at each move), and
+ghosts whose random moves prefer their current direction
+(\cref{rem:ghost-heading}). Unless stated
 otherwise, the examples of this course use game \code{v1}, on which all the
 results were obtained.
 

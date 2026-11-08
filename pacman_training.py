@@ -38,6 +38,8 @@ pacman_conf_v1 = PacmanConf(playground = pacman_map3,
                             penalty_per_ghost = -5)
 
 # Game "v2": bigger maze, eaten ghosts come back, shorter power, small reward for eating a ghost.
+# The ghosts start in the ghost house and go back to it when eaten; they leave it (when Pacman has
+# no power) with probability 0.1 at each move.
 pacman_conf_v2 = PacmanConf(playground = pacman_map4,
                             ghost_aggressiveness_levels = [0.74, 0.64, 0.52],
                             edible_ghosts_behavior = [EdibleGhostBehaviors.FLEE_FAST] * 3,
@@ -51,9 +53,12 @@ pacman_conf_v2 = PacmanConf(playground = pacman_map4,
                             lose_reward = -35,
                             win_reward = 30,
                             penalty_per_ghost = 0, # ghosts come back: no penalty for ghosts left at the end
-                            ghost_respawn_delay = 15,
-                            ghost_respawn_min_distance = 6,
-                            ghost_keep_direction = True)
+                            ghost_respawn_delay = 15,       # (used with ghost_respawn = "random")
+                            ghost_respawn_min_distance = 6, # (used with ghost_respawn = "random")
+                            ghost_keep_direction = True,
+                            ghost_start = "house",
+                            ghost_respawn = "house",
+                            ghost_house_exit_prob = 0.1)
 
 GAMES = {"v1": pacman_conf_v1, "v2": pacman_conf_v2}
 pacman_conf = pacman_conf_v1 # default game (the one of the trained agents in Trainings/)

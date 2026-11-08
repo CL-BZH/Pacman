@@ -37,7 +37,9 @@ def maze_facts(maze: PacmanMap):
     return {"size": f"{maze.rows} x {maze.columns}",
             "free cells": maze.n_rooms,
             "dead ends": dead_ends,
-            "left-right symmetric": bool(np.array_equal(grid, grid[:, ::-1]))}
+            "left-right symmetric": bool(np.array_equal(grid, grid[:, ::-1])),
+            "ghost house": (f"{len(maze.house)} cells, door at {maze.house_door}" if maze.house
+                            else "none")}
 
 
 def main():
@@ -65,6 +67,9 @@ def main():
     conf = GAMES[args.game]
     if args.map:
         conf = dataclasses.replace(conf, playground=getattr(pacman_maps, args.map))
+        if not conf.playground.house and "house" in (conf.ghost_start, conf.ghost_respawn):
+            print(f"({args.map} has no ghost house: the ghosts start and come back at random cells)")
+            conf = dataclasses.replace(conf, ghost_start="random", ghost_respawn="random")
     maze = conf.playground
 
     name = args.map or next(n for n in maps if getattr(pacman_maps, n) is maze)
@@ -73,6 +78,10 @@ def main():
         print(f"  {key}: {value}")
     if not args.empty:
         print(f"  ghosts: {conf.n_ghosts}, power cookies: {conf.n_power_cookies}")
+        print(f"  ghosts start: {conf.ghost_start}, eaten ghosts come back: "
+              + ("to the house" if conf.ghost_respawn == "house" else
+                 f"at a random cell after {conf.ghost_respawn_delay} moves" if conf.ghost_respawn_delay > 0
+                 else "never"))
 
     if args.seed is not None:
         random.seed(args.seed)

@@ -36,4 +36,12 @@ class PacmanConf:
     ghost_keep_direction: bool = False  # When a ghost moves randomly, the move that keeps its direction
                                         # has a weight 1.5 (False in game v1, where the intended
                                         # preference was never applied because of a bug)
+    ghost_start: str = "random"         # Where the ghosts start: "random" (random cells) or "house"
+                                        # (in the ghost house of the map, which they leave one by one)
+    ghost_respawn: str = "random"       # Where eaten ghosts come back: "random" (random cell, see
+                                        # ghost_respawn_delay; never if it is 0) or "house" (they go
+                                        # back to the ghost house at once and leave it again)
+    ghost_house_exit_prob: float = 0.1  # When Pacman has no power, a ghost in the house leaves it
+                                        # with this probability at each move (memoryless: the time
+                                        # spent in the house is not hidden information)
 

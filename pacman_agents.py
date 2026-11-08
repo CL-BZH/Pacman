@@ -253,7 +253,7 @@ class DQN_PacmanAgent(PacmanAgent):
                     history.append({"step": step, "reward": ep_rewards[env_idx],
                                     "length": ep_lengths[env_idx],
                                     "won": bool(done and not env.dead), "lost": bool(env.dead),
-                                    "aborted": bool(truncated), "ghosts_left": len(env.ghosts),
+                                    "aborted": bool(truncated), "ghosts_left": env.n_ghosts_in_game,
                                     "power_cookies_eaten": env.n_eaten_power_cookies})
                     self.reset_env(env_idx)
                     obs = self.stacked_observation(env_idx, reset=True)
@@ -442,7 +442,7 @@ class A2C_PacmanAgent(PacmanAgent):
                         history.append({"step": step, "reward": ep_rewards[env_idx],
                                         "length": ep_lengths[env_idx],
                                         "won": bool(done and not env.dead), "lost": bool(env.dead),
-                                        "aborted": bool(truncated), "ghosts_left": len(env.ghosts),
+                                        "aborted": bool(truncated), "ghosts_left": env.n_ghosts_in_game,
                                         "power_cookies_eaten": env.n_eaten_power_cookies,
                                         "aggressiveness_scale": scale})
                         obs = new_game(env_idx, scale)

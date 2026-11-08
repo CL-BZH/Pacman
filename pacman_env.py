@@ -44,6 +44,14 @@ class PacmanEnvironment:
         self.ghost_respawn_delay = config.ghost_respawn_delay
         self.ghost_respawn_min_distance = config.ghost_respawn_min_distance
         self.ghost_keep_direction = config.ghost_keep_direction
+        self.ghost_start = config.ghost_start
+        self.ghost_respawn = config.ghost_respawn
+        self.ghost_house_exit_prob = config.ghost_house_exit_prob
+        assert self.ghost_start in ("random", "house"), "ghost_start must be 'random' or 'house'"
+        assert self.ghost_respawn in ("random", "house"), "ghost_respawn must be 'random' or 'house'"
+        if "house" in (self.ghost_start, self.ghost_respawn) and not self.map.house:
+            raise ValueError("ghost_start or ghost_respawn is 'house' but the map has no ghost house"
+                             " (cells with the value 2)")
         self._maze_distances = None # computed when first needed (see maze_distances())
         self.n_steps = 0
         self.cumulated_reward = 0.
@@ -75,6 +83,7 @@ class PacmanEnvironment:
         self.visited_pos = None
         self.ghosts = None
         self.dead_ghosts = None
+        self.house_ghosts = [] # Ghosts waiting in the ghost house (see ghost_start, ghost_respawn)
         self.last_eaten_cookie = {'pos': (0,0), 'power': False, 'steps': 0}
         self.power_cookies = None # Cookies that give power to eat ghost
         self.died_on_pacman_move = False # True if Pacman died by moving onto a ghost
@@ -115,6 +124,9 @@ class PacmanEnvironment:
                 start_pacman_pos = random.sample(list(self.valid_pos), 1)[0]
                 if ghosts_start_pos != None and np.min(cdist([start_pacman_pos], ghosts_start_pos)) < 2:
                     start_pacman_pos = None
+                elif (ghosts_start_pos == None and self.ghost_start == "house"
+                      and np.min(cdist([start_pacman_pos], [self.map.house_door])) < 2):
+                    start_pacman_pos = None # not at the door of the ghost house
             #assert start_pacman_pos in self.valid_pos
             self.current_pacman_pos = start_pacman_pos
             self.start_pacman_pos = start_pacman_pos
@@ -126,8 +138,11 @@ class PacmanEnvironment:
             # Place ghosts
             self.ghosts = []
             self.dead_ghosts = []
+            self.house_ghosts = []
             ghosts_pos = []
-            if start_ghosts_pos == None:
+            if start_ghosts_pos == None and self.ghost_start == "house":
+                ghosts_pos = [self.house_cell(i) for i in range(self.n_ghosts)]
+            elif start_ghosts_pos == None:
                 while ghosts_pos == []:
                     ghosts_pos = random.sample(self.cookies, self.n_ghosts)
                     if np.min(cdist([self.start_pacman_pos], ghosts_pos)) < 2:
@@ -141,6 +156,8 @@ class PacmanEnvironment:
                 self.ghosts.append(PacmanGhost(self.map, pos, aggressiveness,
                                                id=i, color=color,
                                                edible_ghost_behavior=edible_ghost_behavior))
+            if start_ghosts_pos == None and self.ghost_start == "house":
+                self.house_ghosts, self.ghosts = self.ghosts, []
             # Place power cookies (replace normal cookies by power cookies)
             self.power_cookies = random.sample(self.cookies, 1) # Place the first power cookie
             self.cookies.remove(self.power_cookies[-1]) # "normal cookies" are replaced by "power cookies"
@@ -177,7 +194,7 @@ class PacmanEnvironment:
         if pos in self.cookies:
             self.last_eaten_cookie = {'pos': pos, 'power': False, 'steps': self.n_steps}
             self.cookies.remove(pos)
-            if self.power_credit == 0 or len(self.ghosts) == 0:
+            if self.power_credit == 0 or self.n_ghosts_in_game == 0:
                 # Eating a cookie gives a positive reward only if
                 # Pacman has no power or if he has power but there is no more ghost to eat
                 reward = self.eat_cookie_reward
@@ -185,7 +202,7 @@ class PacmanEnvironment:
             self.last_eaten_cookie = {'pos': pos, 'power': True, 'steps': self.n_steps}
             self.power_cookies.remove(pos)
             self.n_eaten_power_cookies += 1
-            if len(self.ghosts) == 0:
+            if self.n_ghosts_in_game == 0:
                 # When there is no giost left then eating a power cookie is
                 # the same as eating a normal cookie
                 reward = self.eat_cookie_reward
@@ -195,7 +212,7 @@ class PacmanEnvironment:
                 benefit = 1.0 - (float(self.power_credit) / float(self.max_power_credit))
                 # The benefit of eating a power cookie is bigger the closer a ghost is
                 min_dist = np.inf
-                for ghost in self.ghosts:
+                for ghost in self.ghosts + self.house_ghosts:
                     dist = cdist(np.asarray(self.current_pacman_pos).reshape((1,2)),
                                  np.asarray(ghost.pos).reshape((1,2)),
                                  metric='cityblock')[0][0]
@@ -211,7 +228,7 @@ class PacmanEnvironment:
                 #print(f"min_dist: {min_dist}, benefit: {benefit}, reward: {reward}")
             self.power_credit = self.max_power_credit # Gain power credit for eating ghost
         if len(self.cookies) + len(self.power_cookies) == 0:
-            reward += self.win_reward + (self.penalty_per_ghost * len(self.ghosts))
+            reward += self.win_reward + (self.penalty_per_ghost * self.n_ghosts_in_game)
             self.end = True
         return reward
         
@@ -222,8 +239,16 @@ class PacmanEnvironment:
             if self.power_credit != 0:
                 # Pacman eats the ghost
                 self.ghosts.remove(ghost)
-                self.dead_ghosts.append(ghost)
                 ghost.eaten_at = self.n_steps
+                ghost.eaten_pos = tuple(int(c) for c in ghost.pos)
+                if self.ghost_respawn == "house":
+                    # Back to the ghost house at once (visible there)
+                    ghost.pos = self.house_cell(ghost.id)
+                    ghost.heading = None
+                    self.house_ghosts.append(ghost)
+                    self.house_ghosts.sort(key=lambda g: g.id)
+                else:
+                    self.dead_ghosts.append(ghost)
                 reward = self.eat_ghost_reward
             else:
                 # The ghost eats pacman
@@ -285,7 +310,7 @@ class PacmanEnvironment:
         
         '''
         reward = 0
-        if self.power_credit == 0 or len(self.ghosts) == 0:
+        if self.power_credit == 0 or self.n_ghosts_in_game == 0:
             # Small cost of living (encourage to move and eat cookies)
             reward = self.living_cost
         
@@ -299,7 +324,7 @@ class PacmanEnvironment:
         new_pos = tuple(new_pos)
         self.visited_pos.add(new_pos)
         
-        if ((self.power_credit != 0 or len(self.ghosts) == 0)
+        if ((self.power_credit != 0 or self.n_ghosts_in_game == 0)
             and self.current_pacman_pos == new_pos):
                 # Discourage pacman to stay still when he has the power to eat
                 # ghosts or when there is no ghost left
@@ -328,6 +353,8 @@ class PacmanEnvironment:
         reward = 0
         if self.ghost_respawn_delay > 0:
             self._respawn_ghosts()
+        if self.house_ghosts:
+            self._release_ghosts()
         #assert self.end == False
         # Update ghosts ages
         for ghost in self.ghosts:
@@ -402,6 +429,38 @@ class PacmanEnvironment:
             self.ghosts.append(ghost)
             self.ghosts.sort(key=lambda g: g.id)
 
+    def house_cell(self, ghost_id):
+        '''Cell of the ghost house where the ghost 'ghost_id' waits.'''
+        return self.map.house[ghost_id % len(self.map.house)]
+
+    @property
+    def n_ghosts_in_game(self):
+        '''Ghosts on the board or waiting in the ghost house (eaten ghosts that never come back
+        or have not yet come back at a random cell are not counted).'''
+        return len(self.ghosts) + len(self.house_ghosts)
+
+    def _release_ghosts(self):
+        '''
+        When Pacman has no power, each ghost in the ghost house leaves it with probability
+        ghost_house_exit_prob, through the door, if the door is free (so at most one ghost
+        leaves at each move). The exit time is memoryless: how long a ghost has already waited
+        tells nothing about when it will leave, so the board shows all there is to know.
+        '''
+        if self.power_credit > 0:
+            return
+        door = self.map.house_door
+        for ghost in list(self.house_ghosts):
+            if np.random.random() >= self.ghost_house_exit_prob:
+                continue
+            if door == self.current_pacman_pos or any(tuple(g.pos) == door for g in self.ghosts):
+                continue
+            ghost.pos = door
+            ghost.heading = None
+            ghost.age = self.n_steps - 1 # incremented below like the other ghosts
+            self.house_ghosts.remove(ghost)
+            self.ghosts.append(ghost)
+            self.ghosts.sort(key=lambda g: g.id)
+
     def clone(self):
         '''
         Fast copy of the environment for simulations (e.g. look-ahead search):
@@ -414,6 +473,7 @@ class PacmanEnvironment:
         env.visited_pos = set(self.visited_pos)
         env.ghosts = [copy.copy(ghost) for ghost in self.ghosts]
         env.dead_ghosts = [copy.copy(ghost) for ghost in self.dead_ghosts]
+        env.house_ghosts = [copy.copy(ghost) for ghost in self.house_ghosts]
         return env
 
     def get_all_actions(self):
@@ -458,7 +518,7 @@ class PacmanEnvironment:
         """
         #n_actions = self.map_actions.shape[2]
         
-        ghosts_pos = [ghost.pos for ghost in self.ghosts]# All ghosts positions on the map
+        ghosts_pos = [ghost.pos for ghost in self.ghosts + self.house_ghosts]# All ghosts positions on the map
         
         # RGB image
         rows = self.map_actions.shape[0]
@@ -497,11 +557,12 @@ class PacmanEnvironment:
     def feature_image(self):
         """
         Richer alternative to rgb_image, with one binary plane per kind of object:
-            0: walls
+            0: walls (the ghost house included)
             1: cookies
             2: power cookies
             3: Pacman
-            4 ... 4+n_ghosts-1: one plane per ghost (ghosts have different aggressiveness)
+            4 ... 4+n_ghosts-1: one plane per ghost (ghosts have different aggressiveness);
+                                a ghost waiting in the ghost house is shown there
             last: Pacman's remaining power (power_credit / max_power_credit, constant plane)
         Unlike rgb_image, walls cannot be confused with empty cells and each
         ghost can be identified. Borders are removed as in rgb_image.
@@ -519,7 +580,7 @@ class PacmanEnvironment:
         paint(self.cookies, 1)
         paint(self.power_cookies, 2)
         paint([self.current_pacman_pos], 3)
-        for ghost in self.ghosts:
+        for ghost in self.ghosts + self.house_ghosts: # (ghosts in the house are visible there)
             paint([tuple(ghost.pos)], 4 + ghost.id)
         img[:, :, -1] = float(self.power_credit) / self.max_power_credit
 
@@ -533,11 +594,14 @@ class PacmanEnvironment:
         # Get all ghosts positions and headings
         ghosts_pos = list()
         ghosts_heading = list()
-        if self.ghosts != []:
-            ghosts = np.array([(ghost.pos, ghost.heading, ghost.color) for ghost in self.ghosts], dtype=object)
+        if self.ghosts + self.house_ghosts != []:
+            # (ghosts waiting in the ghost house are drawn there, never as edible)
+            ghosts = np.array([(ghost.pos, ghost.heading, ghost.color, ghost in self.house_ghosts)
+                               for ghost in self.ghosts + self.house_ghosts], dtype=object)
             ghosts_pos = list(ghosts[:,0])
             ghosts_heading = list(ghosts[:,1])
             ghosts_color = list(ghosts[:,2])
+            ghosts_in_house = list(ghosts[:,3])
         
         # Special for ghost that just died (eaten by Pacman)
         eaten_ghosts_pos = []
@@ -547,10 +611,15 @@ class PacmanEnvironment:
                 #     print(f"Ghost {dead_ghost.id} current pos: {dead_ghost.pos}\nCurrent Pacman pos: {self.current_pacman_pos}")
                 #     assert dead_ghost.pos == self.current_pacman_pos
                 eaten_ghosts_pos.append(dead_ghost.pos)
+        for ghost in self.house_ghosts:
+            if getattr(ghost, "eaten_at", None) == self.n_steps:
+                eaten_ghosts_pos.append(ghost.eaten_pos) # just eaten, sent back to the house
                 
                 
         cells = {"wall": (0,"black")} # Walls
         cells["valid"] = (1,"silver") # Rooms (i.e not wall cells)
+        if self.map.house:
+            cells["house"] = (2, "#9b7bc4") # Ghost house
 
         pacman_normal_color = '#0000FF'
         pacman_normal_ec = None
@@ -576,6 +645,8 @@ class PacmanEnvironment:
             for j in range(columns):
                 if (i,j) in self.valid_pos:
                     Z[i, j] = cells["valid"][0]
+                elif self.map[i, j] == 2:
+                    Z[i, j] = cells["house"][0]
                 else:
                     Z[i, j] = cells["wall"][0]
                 if (self.cookies != [] and 
@@ -600,12 +671,12 @@ class PacmanEnvironment:
                             # shift a bit
                             xs = x + (self._display_rng.random() - 0.5) * 0.3
                             ys = y + (self._display_rng.random() - 0.5) * 0.3
-                            ghosts.append((xs, ys, color, heading))
+                            ghosts.append((xs, ys, color, heading, ghosts_in_house[idx]))
                     else:
                         idx = ghosts_idx[0]
                         color = ghosts_color[idx]
                         heading = ghosts_heading[idx]
-                        ghosts.append((x, y, color, heading))
+                        ghosts.append((x, y, color, heading, ghosts_in_house[idx]))
                 if (eaten_ghosts_pos != [] and 
                     (i,j) in eaten_ghosts_pos):
                     x = j + 0.42
@@ -767,7 +838,7 @@ class PacmanEnvironment:
             
                  
             # Add the ghosts
-            for (x,y, color, heading) in ghosts:
+            for (x,y, color, heading, in_house) in ghosts:
                     
                 # Ghosts eyes color to be randomly selected from the list
                 ghost_eye_color = ["white","white","white","white","white"]
@@ -795,7 +866,7 @@ class PacmanEnvironment:
                 
                 w = None
 
-                if self.power_credit != 0:
+                if self.power_credit != 0 and not in_house:
                     if just_ate_power_cookie == False or f == 2:
                         color = edible_ghost_color
                         w = mpatches.FancyBboxPatch((x-0.01, y+0.01), 0.2, -0.12, ec="none", color='white',

@@ -293,9 +293,10 @@ makes the whole game matter:
 
 | | `v1` | `v2` |
 |---|---|---|
-| Maze | `pacman_map3` (11 x 15, 77 open cells) | `pacman_map4` (17 x 19, 163 open cells) |
+| Maze | `pacman_map3` (11 x 15, 77 open cells) | `pacman_map4` (17 x 19, 163 open cells, ghost house) |
 | Ghosts | 2 (aggressiveness 0.74, 0.64) | 3 (0.74, 0.64, 0.52) |
-| Eaten ghosts | never come back | come back (see below) |
+| Ghosts start | at random cells | in the ghost house (see below) |
+| Eaten ghosts | never come back | go back to the ghost house (see below) |
 | Power cookies | 2 | 4 |
 | Power duration | 12 moves | 10 moves |
 | Reward for eating a ghost | 20 | 5 |
@@ -309,11 +310,23 @@ The fix is enabled by `PacmanConf.ghost_keep_direction`, so that the games of `v
 The other rewards are the same. `pacman_map4` is left-right symmetric (as required by the symmetric
 network), has no dead ends and no open areas.
 
-An eaten ghost comes back `ghost_respawn_delay` moves after being eaten (15 in `v2`), and not before
-Pacman's power has ended, so a ghost that comes back is always dangerous. It comes back at a random cell
-at least `ghost_respawn_min_distance` moves away from Pacman (6 in `v2`). These two parameters of
-`PacmanConf` are optional: with `ghost_respawn_delay = 0` (the default) eaten ghosts never come back, as
-in `v1`.
+The ghosts start in the ghost house, 3 cells in the middle of the maze (value `2` in the map, blocked
+for Pacman), and an eaten ghost goes straight back to it. When Pacman has no power, each ghost in the
+house leaves it with probability `ghost_house_exit_prob` (0.1) at each move, through the door above the
+house, if the door is free. So a ghost that comes out is always dangerous, and the ghosts come out one
+by one. The ghosts in the house are visible on the board (and in the input of the network), and the
+exit time is memoryless (geometric): how long a ghost has already waited tells nothing about when it
+will leave. The board therefore shows everything the agent needs to know about the ghosts in the house.
+
+The placement of the ghosts is chosen in `PacmanConf`:
+- `ghost_start`: `"random"` (default, as in `v1`) or `"house"`;
+- `ghost_respawn`: `"random"` (default) or `"house"`. With `"random"`, an eaten ghost comes back
+  `ghost_respawn_delay` moves after being eaten, and not before Pacman's power has ended, at a random
+  cell at least `ghost_respawn_min_distance` moves away from Pacman; with `ghost_respawn_delay = 0`
+  (the default) eaten ghosts never come back, as in `v1`. The waiting time is then hidden from the
+  agent (the game is partially observable).
+
+`"house"` needs a map with a ghost house (cells `2`); `v1` keeps random starts and no respawn.
 
 Both games are defined in `pacman_training.py` (`GAMES = {"v1": ..., "v2": ...}`). `v1` stays the
 default, since the agents in `Trainings/` were trained on it: its games are exactly the same as before.

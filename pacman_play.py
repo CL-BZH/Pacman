@@ -131,16 +131,16 @@ def play_game(env, agent, stockastic=False, display=False, wait=15, speed=0.12, 
             frames.append(env.clone())
                 
         if len(rewards) == 600:
-            print(f"\nNon finished. Number of ghost: {len(env.ghosts)}.")
+            print(f"\nNon finished. Number of ghost: {env.n_ghosts_in_game}.")
         if len(rewards) > max_moves:
-            print(f"\nAbort.Number of ghost: {len(env.ghosts)}.") #"\nRewards:\n{rewards}")
+            print(f"\nAbort.Number of ghost: {env.n_ghosts_in_game}.") #"\nRewards:\n{rewards}")
             aborted = True
             break
         
     if display:
         animate_game(frames, wait, speed)
     cause = loss_cause(power_before, env.died_on_pacman_move) if env.dead else None
-    return env.dead == True, aborted, len(env.ghosts), env.n_eaten_power_cookies, cause
+    return env.dead == True, aborted, env.n_ghosts_in_game, env.n_eaten_power_cookies, cause
 
 
 def animate_game(frames, wait, speed):

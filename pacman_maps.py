@@ -13,21 +13,43 @@ import matplotlib.patches as mpatches
 from typing import List
 
 class PacmanMap:
-    def __init__(self, ll: [List[List]]):
+    '''
+    A board: 0 = free cell, 1 = wall, 2 = ghost house (optional).
+    The ghost house is blocked for Pacman (and for the moving ghosts): ghosts wait in it and
+    leave it through its door, a free cell next to it (by default the free cell above the
+    middle of the house; it can be given with house_door).
+    '''
+    def __init__(self, ll: [List[List]], house_door=None):
         self.map = np.array(ll)
         self.rows, self.columns = self.map.shape
         self.max_dist = np.sqrt(self.rows**2  + self.columns**2)
         self.start = None
-        self.walls = set() # All blocked cells
+        self.walls = set() # All blocked cells (the ghost house included)
         self.rooms = set() # All unblocked cells (i.e. all cells that are not walls)
         self.cells = {"room": (0,"yellow"),
                       "wall": (1,"black")}
         for i in range(self.rows):
             for j in range(self.columns):
-                if self.map[i,j] == 1:
+                if self.map[i,j] != 0:
                     self.walls.add((i,j))
                 else:
-                    self.rooms.add((i,j))                    
+                    self.rooms.add((i,j))
+        # Ghost house: its cells (one per ghost, ghost i waits in house[i % len(house)]) and its door
+        self.house = sorted((i, j) for i in range(self.rows) for j in range(self.columns)
+                            if self.map[i, j] == 2)
+        self.house_door = None
+        if self.house:
+            self.cells["house"] = (2, "#9b7bc4")
+            if house_door is None:
+                rows = [i for i, _ in self.house]
+                cols = [j for _, j in self.house]
+                centre = (min(cols) + max(cols)) / 2
+                candidates = [(i - 1, j) for i, j in self.house if (i - 1, j) in self.rooms]
+                candidates += [(i + 1, j) for i, j in self.house if (i + 1, j) in self.rooms]
+                assert candidates, "the ghost house needs a free cell above or below it (its door)"
+                house_door = min(candidates, key=lambda c: (abs(c[1] - centre), c[0] > min(rows)))
+            assert tuple(house_door) in self.rooms, "the door of the ghost house must be a free cell"
+            self.house_door = tuple(house_door)
     
     def __getitem__(self, item):
         i = item[0]
@@ -116,7 +138,8 @@ pacman_map3 = PacmanMap([[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
                          [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]])
 
 
-# Bigger maze (17 x 19, 163 open cells): left-right symmetric, no dead ends
+# Bigger maze (17 x 19, 163 open cells): left-right symmetric, no dead ends.
+# Ghost house (2) of 3 cells in the middle, with its door above it at (7, 9).
 pacman_map4 = PacmanMap([
                           [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
                           [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
@@ -126,7 +149,7 @@ pacman_map4 = PacmanMap([
                           [1,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
                           [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
                           [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                          [1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1],
+                          [1,1,1,1,0,1,0,1,2,2,2,1,0,1,0,1,1,1,1],
                           [1,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,1],
                           [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
                           [1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1],

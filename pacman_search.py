@@ -279,8 +279,8 @@ class LookaheadSearch:
             for k in range(self.n_simulations):
                 sim_env = env.clone()
                 if self.ghost_model != "exact":
-                    # (dead ghosts too: they may come back during the simulation)
-                    for ghost in sim_env.ghosts + sim_env.dead_ghosts:
+                    # (eaten ghosts too: they may come back during the simulation)
+                    for ghost in sim_env.ghosts + sim_env.dead_ghosts + sim_env.house_ghosts:
                         if self.ghost_model == "chase":
                             self._model_ghost(ghost, p_chase=1., p_flee=0.)
                         else:

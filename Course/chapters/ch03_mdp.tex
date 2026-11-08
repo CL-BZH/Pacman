@@ -94,12 +94,22 @@ handled by the same equations.
   direction (\cref{rem:ghost-heading}), so the direction of each ghost is
   part of the state: the second frame is now needed, and it is enough,
   since the displacement of a ghost between the two frames is its last
-  move. But the time since a ghost was eaten decides when it comes back,
-  and it appears in no plane of the image. The process seen by the agent is
-  then a \emph{partially observable} MDP (POMDP): the image is not a state.
-  Stacking frames does not solve this (the timer can be older than two
-  frames); adding a plane with the remaining time of each eaten ghost
-  would.
+  move. Its eaten ghosts also come back. In a first version they
+  reappeared on a random cell $15$ moves after being eaten: the time since
+  a ghost was eaten then decided when it came back, and it appears in no
+  plane of the image. The process seen by the agent was a \emph{partially
+  observable} MDP (POMDP): the image was not a state, and stacking frames
+  does not help (the timer can be older than two frames). In game
+  \code{v2} the eaten ghosts instead wait in a ghost house, visible on the
+  board, and once Pacman's power has ended each of them leaves it with
+  probability $p = 0.1$ at each move. The waiting time $T$ is geometric,
+  $\Prob(T > k) = (1 - p)^k$, hence \emph{memoryless}:
+  \begin{equation*}
+    \Prob(T > k + m \mid T > k) = \frac{(1 - p)^{k + m}}{(1 - p)^k} = (1 -
+    p)^m = \Prob(T > m).
+  \end{equation*}
+  How long a ghost has already waited tells nothing about when it will
+  leave, and the image (with its power plane) is again a state.
 \end{remark}
 
 \section{Returns}
