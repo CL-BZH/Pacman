@@ -3,6 +3,10 @@ This depository contains the code of a Pacman game I wrote from scratch for test
 
 Currently, 2 algorithms are implemented, DQN and A2C (trained with PPO updates by default).
 
+A comprehensive course on reinforcement learning, from bandits and Markov decision processes to
+deep RL, planning, offline RL, multi-agent RL and RLHF, with this game as running example, is in
+the folder `Course` ([PDF](Course/rl_with_pacman.pdf)).
+
 ## To run games
 
 To let Pacman play games run the command below in a terminal.
@@ -280,6 +284,50 @@ the best choice without search (no extra cost), and either agent with `--search 
 (On these 1000 games `PPO_1` alone wins 97.1%, more than its usual 96%: the absolute levels vary from
 one set of games to another, but the differences inside the table are reliable, since all four
 configurations play the same games.)
+
+## Game v2
+
+On the original game (now called `v1`), the trained agents win more than 96% of the games, and they
+usually eat both ghosts early: the rest of the game is then only about collecting cookies. Game `v2`
+makes the whole game matter:
+
+| | `v1` | `v2` |
+|---|---|---|
+| Maze | `pacman_map3` (11 x 15, 77 open cells) | `pacman_map4` (17 x 19, 163 open cells) |
+| Ghosts | 2 (aggressiveness 0.74, 0.64) | 3 (0.74, 0.64, 0.52) |
+| Eaten ghosts | never come back | come back (see below) |
+| Power cookies | 2 | 4 |
+| Power duration | 12 moves | 10 moves |
+| Reward for eating a ghost | 20 | 5 |
+| Penalty per ghost left at the end | -5 | 0 |
+| Random moves of the ghosts prefer their current direction | no (\*) | yes (weight 1.5) |
+
+(\*) The code intends a weight 1.5 for the move that keeps a ghost's direction, but in `v1` it
+compares a position with a direction letter, which is never true: the random moves are uniform.
+The fix is enabled by `PacmanConf.ghost_keep_direction`, so that the games of `v1` are unchanged.
+
+The other rewards are the same. `pacman_map4` is left-right symmetric (as required by the symmetric
+network), has no dead ends and no open areas.
+
+An eaten ghost comes back `ghost_respawn_delay` moves after being eaten (15 in `v2`), and not before
+Pacman's power has ended, so a ghost that comes back is always dangerous. It comes back at a random cell
+at least `ghost_respawn_min_distance` moves away from Pacman (6 in `v2`). These two parameters of
+`PacmanConf` are optional: with `ghost_respawn_delay = 0` (the default) eaten ghosts never come back, as
+in `v1`.
+
+Both games are defined in `pacman_training.py` (`GAMES = {"v1": ..., "v2": ...}`). `v1` stays the
+default, since the agents in `Trainings/` were trained on it: its games are exactly the same as before.
+To use `v2`:
+```bash
+python pacman_play.py --game v2 -c Tmp/pacman_a2c_final.pth     # also with --search
+python pacman_expert.py --game v2 -c <A2C agent trained on v2>
+```
+In the notebooks, set `GAME = "v2"` (the default in the notebooks). An agent trained on one game cannot
+play the other one (the size of the board and the number of ghosts differ): `pacman_play.py` says so
+if the game does not match the agent.
+
+With ghosts that come back, the statistic "ghosts left at the end" of the training logs is less
+meaningful than in `v1`. On a CPU, the training is about 1.5 times slower than on `v1` (bigger board).
 
 ## Some explanations about the software
 

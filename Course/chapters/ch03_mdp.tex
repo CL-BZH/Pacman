@@ -1,0 +1,470 @@
+\chapter{Markov decision processes}
+\label{ch:mdp}
+
+This chapter gives the mathematical framework of reinforcement learning:
+Markov decision processes (MDPs), returns, policies and value functions. Its
+central results are the Bellman equations, which characterise the value of
+a policy and the value of an optimal policy as fixed points of contractions;
+every algorithm of this course is built on them.
+
+Throughout the theory we assume, as in Pacman, that the sets of states and
+actions are finite, and that the rewards are bounded.
+
+\section{Markov decision processes}
+
+\begin{definition}{Markov decision process}{mdp}
+  A (finite) \emph{Markov decision process} is a tuple
+  $(\States, \Actions, p, \gamma)$ where
+  \begin{itemize}[nosep]
+    \item $\States$ is a finite set of \emph{states} and $\Actions$ a finite
+      set of \emph{actions};
+    \item $p(s', r \mid s, a)$ is the probability that the environment
+      moves to state $s'$ and gives reward $r$ when action $a$ is taken in
+      state $s$, the rewards belonging to a finite set $\Rewards \subset
+      \R$:
+      \begin{equation}
+        \sum_{s' \in \States} \sum_{r \in \Rewards} p(s', r \mid s, a) = 1
+        \qquad \text{for all } s \in \States,\ a \in \Actions;
+      \end{equation}
+    \item $\gamma \in [0, 1)$ is the \emph{discount factor}.
+  \end{itemize}
+  The process generates random variables $S_0, A_0, R_1, S_1, A_1, R_2,
+  \dots$ such that, for every $t$ and every history,
+  \begin{equation}
+    \label{eq:markov}
+    \Prob\left(S_{t+1} = s', R_{t+1} = r \given S_t = s, A_t = a,
+      H_{t-1}\right) = p(s', r \mid s, a),
+  \end{equation}
+  where $H_{t-1} = (S_0, A_0, R_1, \dots, S_{t-1}, A_{t-1}, R_t)$ is the
+  past. Equation \eqref{eq:markov} is the \emph{Markov property}: the future
+  depends on the past only through the current state and action.
+\end{definition}
+
+Two quantities derived from $p$ are used constantly: the \emph{transition
+probabilities} and the \emph{expected rewards}
+\begin{equation}
+  p(s' \mid s, a) = \sum_{r} p(s', r \mid s, a), \qquad
+  r(s, a) = \E\left[R_{t+1} \given S_t = s, A_t = a\right]
+  = \sum_{s', r} r\, p(s', r \mid s, a).
+\end{equation}
+
+\paragraph{Episodes.} A game ends in a \emph{terminal} state. It is
+convenient to model a terminal state as an \emph{absorbing} state: every
+action keeps the process in it with reward $0$. With this convention all
+the trajectories are infinite, and the episodic and continuing settings are
+handled by the same equations.
+
+\begin{pacman}{The game as an MDP}{pacman-mdp}
+  A state of game \code{v1} is the configuration of the board: Pacman's
+  cell, the cells of the ghosts still in the game, the set of remaining
+  cookies, the set of remaining power cookies and Pacman's power credit
+  $c \in \{0, \dots, 12\}$; plus two absorbing states, ``won'' and
+  ``lost''. The actions are $\Actions = \{\code{E}, \code{N}, \code{W},
+  \code{S}, \code{I}\}$. The randomness of $p$ comes only from the ghosts
+  (\cref{sec:game}): given the configuration and Pacman's action, the
+  probability of each new configuration is a product of the probabilities
+  of the moves of the ghosts. The reward is a deterministic function of the
+  configuration, the action and the new configuration
+  (\cref{tab:rewards}).
+
+  The Markov property holds because the ghosts' moves depend only on the
+  current positions and on Pacman's power (\cref{rem:ghost-heading}): the
+  past adds nothing once the configuration is known.
+\end{pacman}
+
+\begin{remark}{Observations and partial observability}{pomdp}
+  The agent does not need the configuration in its Python form: the
+  feature planes of \cref{sec:observation} encode exactly the same
+  information (walls, cookies, power cookies, Pacman, each ghost, the power
+  credit). In game \code{v1} the image is therefore a complete state, and the
+  second stacked frame is redundant in principle: it would be necessary if
+  the ghosts' moves depended on their direction, which the second frame
+  reveals.
+
+  Game \code{v2} differs in two ways. Its ghosts prefer to keep their
+  direction (\cref{rem:ghost-heading}), so the direction of each ghost is
+  part of the state: the second frame is now needed, and it is enough,
+  since the displacement of a ghost between the two frames is its last
+  move. But the time since a ghost was eaten decides when it comes back,
+  and it appears in no plane of the image. The process seen by the agent is
+  then a \emph{partially observable} MDP (POMDP): the image is not a state.
+  Stacking frames does not solve this (the timer can be older than two
+  frames); adding a plane with the remaining time of each eaten ghost
+  would.
+\end{remark}
+
+\section{Returns}
+
+\begin{definition}{Return}{return}
+  The \emph{return} from time $t$ is the discounted sum of the future
+  rewards
+  \begin{equation}
+    \label{eq:return}
+    G_t = R_{t+1} + \gamma R_{t+2} + \gamma^2 R_{t+3} + \cdots
+    = \sum_{k=0}^{\infty} \gamma^k R_{t+k+1}.
+  \end{equation}
+\end{definition}
+
+\begin{proposition}{Properties of the return}{return-props}
+  Let $R_{\max} = \max_{r \in \Rewards} \abs{r}$. Then
+  \begin{enumerate}[nosep, label=(\roman*)]
+    \item the series \eqref{eq:return} converges absolutely and
+      $\abs{G_t} \leq R_{\max} / (1 - \gamma)$;
+    \item $G_t = R_{t+1} + \gamma\, G_{t+1}$.
+  \end{enumerate}
+\end{proposition}
+
+\begin{proof}
+  (i) $\sum_k \gamma^k \abs{R_{t+k+1}} \leq R_{\max} \sum_k \gamma^k =
+  R_{\max} / (1 - \gamma)$. (ii) Since the series converges absolutely we
+  may split off its first term:
+  $G_t = R_{t+1} + \sum_{k \geq 1} \gamma^k R_{t+k+1}
+  = R_{t+1} + \gamma \sum_{j \geq 0} \gamma^j R_{t+1+j+1}
+  = R_{t+1} + \gamma\, G_{t+1}$.
+\end{proof}
+
+The discount factor has two roles. Mathematically it makes the returns
+finite; practically it sets a \emph{horizon}: a reward $k$ steps ahead
+counts $\gamma^k$, and $\sum_k \gamma^k = 1 / (1 - \gamma)$ is the
+effective number of steps the agent looks ahead.
+
+\begin{pacman}{Choosing $\gamma$}{gamma}
+  The agents use $\gamma = 0.99$, an effective horizon of $100$ moves,
+  about the length of a game. The reward of winning ($+30$) obtained $80$
+  moves later is worth $30 \times 0.99^{80} \approx 13.4$ now: still enough
+  to make the agent prefer finishing the game over wandering, but less than
+  eating a ghost now ($+20$). With $\gamma = 0.9$ (horizon $10$ moves) the
+  win would be worth $30 \times 0.9^{80} \approx 0.007$: the agent would
+  be blind to it.
+\end{pacman}
+
+\begin{remark}{Termination and truncation}{truncation}
+  A game \emph{aborted} after the maximal number of moves is not a terminal
+  state of the game: the configuration reached still has a value, and the
+  move counter, which caused the end, is not part of the state. Treating an
+  aborted game as terminal would teach the agent that the states reached
+  late in long games have value $0$. All the algorithms of the repository
+  therefore distinguish the two cases: after a real end, the return
+  stops; after an abort, the return is completed with an estimate of the
+  value of the last state (\emph{bootstrapping}, \cref{ch:td}).
+\end{remark}
+
+\section{Policies and value functions}
+
+\begin{definition}{Policy}{policy}
+  A (stationary, Markov) \emph{policy} is a function $\pi$ that gives, for
+  every state $s$, a probability distribution $\pi(\cdot \mid s)$ over
+  $\Actions$; the agent following $\pi$ chooses $A_t \sim \pi(\cdot \mid
+  S_t)$. The policy is \emph{deterministic} if each $\pi(\cdot \mid s)$ is
+  concentrated on one action, which we then write $\pi(s)$.
+\end{definition}
+
+Given an initial state, a policy and the MDP define the distribution of the
+whole trajectory; we write $\E_\pi$ for expectations under it.
+
+\begin{definition}{Value functions}{values}
+  The \emph{state-value function} and the \emph{action-value function} of a
+  policy $\pi$ are
+  \begin{equation}
+    v_\pi(s) = \E_\pi\left[G_t \given S_t = s\right], \qquad
+    q_\pi(s, a) = \E_\pi\left[G_t \given S_t = s, A_t = a\right].
+  \end{equation}
+\end{definition}
+
+By the Markov property these expectations do not depend on $t$ (the
+distribution of the future given $S_t = s$ is the same at all times). The
+value $v_\pi(s)$ answers ``how good is it to be in $s$ if I follow
+$\pi$?''; $q_\pi(s, a)$ answers ``how good is it to play $a$ in $s$ and then
+follow $\pi$?''.
+
+\begin{proposition}{Relations between $v_\pi$ and $q_\pi$}{v-q}
+  For all states $s$ and actions $a$,
+  \begin{align}
+    \label{eq:v-from-q}
+    v_\pi(s) &= \sum_{a} \pi(a \mid s)\, q_\pi(s, a), \\
+    \label{eq:q-from-v}
+    q_\pi(s, a) &= \sum_{s', r} p(s', r \mid s, a)
+      \left[ r + \gamma\, v_\pi(s') \right]
+      = r(s, a) + \gamma \sum_{s'} p(s' \mid s, a)\, v_\pi(s').
+  \end{align}
+\end{proposition}
+
+\begin{proof}
+  \eqref{eq:v-from-q} is the law of total expectation, conditioning on
+  $A_t$, whose distribution given $S_t = s$ is $\pi(\cdot \mid s)$. For
+  \eqref{eq:q-from-v}, write $G_t = R_{t+1} + \gamma G_{t+1}$ and condition
+  on $(S_{t+1}, R_{t+1})$:
+  \begin{equation*}
+    q_\pi(s, a) = \sum_{s', r} p(s', r \mid s, a) \left( r + \gamma\,
+      \E_\pi\left[G_{t+1} \given S_t = s, A_t = a, S_{t+1} = s',
+        R_{t+1} = r\right] \right).
+  \end{equation*}
+  Given $S_{t+1} = s'$, the actions from $t+1$ on are drawn from $\pi$ and
+  the transitions from $p$, independently of what happened before
+  (Markov property \eqref{eq:markov} and the definition of a Markov
+  policy). Hence the conditional expectation equals
+  $\E_\pi[G_{t+1} \mid S_{t+1} = s'] = v_\pi(s')$.
+\end{proof}
+
+\section{The Bellman expectation equations}
+
+Substituting \eqref{eq:q-from-v} into \eqref{eq:v-from-q}, and conversely,
+gives equations that involve one value function only.
+
+\begin{theorem}{Bellman expectation equations}{bellman-exp}
+  For every policy $\pi$,
+  \begin{align}
+    \label{eq:bellman-v}
+    v_\pi(s) &= \sum_a \pi(a \mid s) \sum_{s', r} p(s', r \mid s, a)
+      \left[ r + \gamma\, v_\pi(s') \right]
+      \quad \text{for all } s, \\
+    \label{eq:bellman-q}
+    q_\pi(s, a) &= \sum_{s', r} p(s', r \mid s, a)
+      \left[ r + \gamma \sum_{a'} \pi(a' \mid s')\, q_\pi(s', a') \right]
+      \quad \text{for all } s, a.
+  \end{align}
+  Moreover $v_\pi$ is the \emph{unique} solution of \eqref{eq:bellman-v}
+  and $q_\pi$ the unique solution of \eqref{eq:bellman-q}.
+\end{theorem}
+
+The existence part is \cref{prop:v-q}. For uniqueness, and for everything
+that follows, it pays to write the equations with operators.
+
+\begin{definition}{Bellman operators}{operators}
+  Let $\R^{\States}$ be the space of functions $v : \States \to \R$ with
+  the sup norm $\norm{v}_\infty = \max_s \abs{v(s)}$. The \emph{Bellman
+  expectation operator} of $\pi$ and the \emph{Bellman optimality operator}
+  are the maps $\R^{\States} \to \R^{\States}$
+  \begin{align}
+    (\T^\pi v)(s) &= \sum_a \pi(a \mid s) \left[ r(s, a) + \gamma \sum_{s'}
+      p(s' \mid s, a)\, v(s') \right], \\
+    (\T^\star v)(s) &= \max_a \left[ r(s, a) + \gamma \sum_{s'}
+      p(s' \mid s, a)\, v(s') \right].
+  \end{align}
+\end{definition}
+
+With this notation, \eqref{eq:bellman-v} reads $v_\pi = \T^\pi v_\pi$:
+$v_\pi$ is a fixed point of $\T^\pi$.
+
+\begin{lemma}{Monotonicity and contraction}{contraction}
+  For all $u, v \in \R^{\States}$:
+  \begin{enumerate}[nosep, label=(\roman*)]
+    \item if $u \leq v$ (pointwise) then $\T^\pi u \leq \T^\pi v$ and
+      $\T^\star u \leq \T^\star v$;
+    \item $\norm{\T^\pi u - \T^\pi v}_\infty \leq \gamma \norm{u -
+      v}_\infty$ and $\norm{\T^\star u - \T^\star v}_\infty \leq \gamma
+      \norm{u - v}_\infty$.
+  \end{enumerate}
+\end{lemma}
+
+\begin{proof}
+  (i) The coefficients $\pi(a \mid s)$ and $\gamma\, p(s' \mid s, a)$ are
+  nonnegative, so each bracket is a nondecreasing function of $v$, and so
+  are their weighted sum and their maximum.
+
+  (ii) For $\T^\pi$: for every $s$,
+  \begin{align*}
+    \abs{(\T^\pi u)(s) - (\T^\pi v)(s)}
+    &= \gamma \abs{\sum_a \pi(a \mid s) \sum_{s'} p(s' \mid s, a)
+      \left(u(s') - v(s')\right)} \\
+    &\leq \gamma \sum_a \pi(a \mid s) \sum_{s'} p(s' \mid s, a)
+      \norm{u - v}_\infty,
+  \end{align*}
+  and the double sum of probabilities equals $1$. For $\T^\star$ we use the
+  elementary inequality, valid for any functions $f, g$ on a finite set,
+  \begin{equation}
+    \label{eq:max-ineq}
+    \abs{\max_a f(a) - \max_a g(a)} \leq \max_a \abs{f(a) - g(a)}.
+  \end{equation}
+  (Let $a_f$ maximise $f$; then $\max f - \max g \leq f(a_f) - g(a_f) \leq
+  \max_a \abs{f(a) - g(a)}$, and symmetrically.) Applying it to
+  $f(a) = r(s, a) + \gamma \sum_{s'} p(s' \mid s, a)\, u(s')$ and the
+  corresponding $g$ with $v$, the rewards cancel and we conclude as for
+  $\T^\pi$.
+\end{proof}
+
+\begin{proof}[Proof of uniqueness in \cref{thm:bellman-exp}]
+  If $v = \T^\pi v$ and $w = \T^\pi w$, then
+  \begin{equation*}
+    \norm{v - w}_\infty = \norm{\T^\pi v - \T^\pi w}_\infty
+    \leq \gamma \norm{v - w}_\infty,
+  \end{equation*}
+  so $\norm{v - w}_\infty = 0$ because $\gamma < 1$. The equation for $q_\pi$
+  is treated in the same way on $\R^{\States \times \Actions}$.
+\end{proof}
+
+\begin{proposition}{Matrix form}{matrix}
+  Number the states, and let $r_\pi \in \R^{\States}$ and $P_\pi \in
+  \R^{\States \times \States}$ be defined by $r_\pi(s) = \sum_a \pi(a \mid
+  s)\, r(s, a)$ and $P_\pi(s, s') = \sum_a \pi(a \mid s)\, p(s' \mid s, a)$.
+  Then $I - \gamma P_\pi$ is invertible and
+  \begin{equation}
+    v_\pi = (I - \gamma P_\pi)^{-1} r_\pi
+    = \sum_{k=0}^{\infty} \gamma^k P_\pi^k\, r_\pi.
+  \end{equation}
+\end{proposition}
+
+\begin{proof}
+  The Bellman equation reads $v_\pi = r_\pi + \gamma P_\pi v_\pi$. The
+  matrix $P_\pi$ is stochastic (nonnegative entries, rows summing to $1$),
+  so its operator norm for $\norm{\cdot}_\infty$ is $1$ and $\norm{\gamma
+  P_\pi}_\infty = \gamma < 1$. The Neumann series $\sum_k (\gamma P_\pi)^k$
+  then converges and is the inverse of $I - \gamma P_\pi$: indeed
+  $(I - \gamma P_\pi) \sum_{k=0}^{n} (\gamma P_\pi)^k = I - (\gamma
+  P_\pi)^{n+1} \to I$. The term $\gamma^k P_\pi^k r_\pi$ is the expected
+  discounted reward collected $k$ steps ahead.
+\end{proof}
+
+\section{Optimal policies}
+
+Value functions order policies: we say that $\pi \geq \pi'$ if $v_\pi(s)
+\geq v_{\pi'}(s)$ for \emph{all} states $s$. It is not obvious that a policy
+better than all the others in every state exists; the Bellman optimality
+equation shows that it does.
+
+\begin{definition}{Optimal value functions}{optimal}
+  The \emph{optimal value functions} are
+  \begin{equation}
+    v_\star(s) = \max_\pi v_\pi(s), \qquad
+    q_\star(s, a) = \max_\pi q_\pi(s, a),
+  \end{equation}
+  the maxima being over all stationary Markov policies. A policy $\pi_\star$
+  is \emph{optimal} if $v_{\pi_\star} = v_\star$.
+\end{definition}
+
+\begin{theorem}{Bellman optimality equation}{bellman-opt}
+  \begin{enumerate}[nosep, label=(\roman*)]
+    \item The operator $\T^\star$ has a unique fixed point $v^\star$, and
+      for every $v \in \R^{\States}$, $(\T^\star)^n v \to v^\star$.
+    \item Let $\pi_\star$ be a \emph{greedy} policy with respect to
+      $v^\star$: for every $s$, $\pi_\star(s)$ is an action maximising
+      $r(s, a) + \gamma \sum_{s'} p(s' \mid s, a)\, v^\star(s')$. Then
+      $v_{\pi_\star} = v^\star$ and $v_\pi \leq v^\star$ for every policy
+      $\pi$. Hence $v_\star = v^\star$, and a deterministic optimal policy
+      exists.
+    \item The optimal action values are $q_\star(s, a) = r(s, a) + \gamma
+      \sum_{s'} p(s' \mid s, a)\, v_\star(s')$, and they satisfy
+      \begin{equation}
+        \label{eq:bellman-q-opt}
+        v_\star(s) = \max_a q_\star(s, a), \qquad
+        q_\star(s, a) = \sum_{s', r} p(s', r \mid s, a)
+          \left[ r + \gamma \max_{a'} q_\star(s', a') \right].
+      \end{equation}
+  \end{enumerate}
+\end{theorem}
+
+\begin{proof}
+  (i) $\R^{\States}$ with $\norm{\cdot}_\infty$ is complete and $\T^\star$
+  is a $\gamma$-contraction (\cref{lem:contraction}); the Banach fixed point
+  theorem gives the unique fixed point and the convergence of the
+  iterates. (We recall its proof: $\norm{(\T^\star)^{n+1} v - (\T^\star)^n
+  v}_\infty \leq \gamma^n \norm{\T^\star v - v}_\infty$, so the iterates
+  form a Cauchy sequence; its limit is a fixed point by continuity of
+  $\T^\star$, unique by the argument used for \cref{thm:bellman-exp}.)
+
+  (ii) By definition of the greedy policy, $\T^{\pi_\star} v^\star =
+  \T^\star v^\star = v^\star$: $v^\star$ is a fixed point of
+  $\T^{\pi_\star}$, whose unique fixed point is $v_{\pi_\star}$
+  (\cref{thm:bellman-exp}); so $v_{\pi_\star} = v^\star$. Now let $\pi$ be
+  any policy. For every $v$, $\T^\pi v \leq \T^\star v$, because a weighted
+  average of the brackets is at most their maximum. Hence $\T^\pi v^\star
+  \leq \T^\star v^\star = v^\star$, and by monotonicity
+  (\cref{lem:contraction}), by induction, $(\T^\pi)^n v^\star \leq
+  v^\star$ for all $n$: if $(\T^\pi)^n v^\star \leq v^\star$ then
+  $(\T^\pi)^{n+1} v^\star \leq \T^\pi v^\star \leq v^\star$. Since
+  $(\T^\pi)^n v^\star \to v_\pi$ (Banach again, for $\T^\pi$), we get
+  $v_\pi \leq v^\star$.
+
+  (iii) By \eqref{eq:q-from-v} applied to $\pi_\star$, the right-hand side
+  is $q_{\pi_\star}(s, a)$. For any policy $\pi$, \eqref{eq:q-from-v} and
+  $v_\pi \leq v_\star$ give $q_\pi(s, a) \leq q_{\pi_\star}(s, a)$; so
+  $q_\star = q_{\pi_\star}$. The fixed point equation $v_\star = \T^\star
+  v_\star$ is the first identity of \eqref{eq:bellman-q-opt}; substituting
+  it into the definition of $q_\star$ gives the second.
+\end{proof}
+
+\begin{remark}{What the theorem says}{opt-meaning}
+  An optimal policy needs no randomness and no memory: in each state it is
+  enough to play an action maximising $q_\star(s, \cdot)$. Knowing
+  $q_\star$ is therefore enough to act optimally, \emph{without} knowing
+  the dynamics $p$; this is the starting point of Q-learning and DQN
+  (\cref{ch:dqn}). Knowing $v_\star$ only is not enough to act: choosing
+  the greedy action requires $p$, i.e.\ a model of the environment. (One
+  can also show that policies depending on the whole history cannot do
+  better than $v_\star$; see Puterman, \emph{Markov Decision Processes},
+  1994, Theorem 6.2.10.)
+\end{remark}
+
+\begin{pacman}{To the power cookie, or away?}{power-or-flee}
+  Pacman is at a junction $s$, with a ghost two cells away. Consider two
+  options, with simplified consequences.
+  \begin{itemize}[nosep]
+    \item $a_1$, \emph{run to the power cookie}: with probability $1 - \rho$
+      Pacman gets there first, receives about $5$ and reaches a state worth
+      $25$ (the ghost will be eaten); with probability $\rho$ the ghost
+      catches him ($-35$, game over).
+    \item $a_2$, \emph{flee down the corridor}: Pacman pays the living cost
+      $-0.15$; with probability $0.6$ the ghost follows and Pacman is back
+      in a situation like $s$; with probability $0.4$ he escapes to a state
+      worth $10$.
+  \end{itemize}
+  With $\gamma = 0.99$, \eqref{eq:bellman-q-opt} gives
+  \begin{equation*}
+    q_\star(s, a_1) = (1 - \rho)(5 + 0.99 \times 25) - 35\,\rho, \qquad
+    q_\star(s, a_2) = -0.15 + 0.99 \left( 0.6\, v_\star(s) + 0.4 \times 10
+    \right),
+  \end{equation*}
+  with $v_\star(s) = \max(q_\star(s, a_1), q_\star(s, a_2))$: the value of
+  fleeing depends on the value of the state itself.
+  \begin{itemize}[nosep]
+    \item For $\rho = 0.3$: $q_\star(s, a_1) = 10.325$. Assuming $v_\star(s)
+      = 10.325$ gives $q_\star(s, a_2) = 9.943 < 10.325$, which is
+      consistent: run to the power cookie, $v_\star(s) = 10.325$.
+    \item For $\rho = 0.4$: $q_\star(s, a_1) = 3.85$. If fleeing is optimal,
+      $v_\star(s) = q_\star(s, a_2)$ solves $q = -0.15 + 0.99 (0.6\, q + 4)$,
+      i.e.\ $q = 3.81 / 0.406 = 9.384 > 3.85$, which is consistent: flee.
+  \end{itemize}
+  A $10\%$ change in the risk changes the optimal decision. Learning such
+  trade-offs from experience is what the agents of the repository do.
+\end{pacman}
+
+\section{Other criteria}
+
+The discounted return is not the only possible objective.
+\begin{itemize}
+  \item \textbf{Finite horizon.} With a fixed number $H$ of steps and no
+    discount, the optimal value depends on the number of steps left: $v_h$
+    for $h$ steps to go satisfies $v_0 = 0$ and $v_{h} = \T^\star v_{h-1}$
+    (with $\gamma = 1$), and the optimal policy is non-stationary. This is
+    backward induction, the original form of dynamic programming
+    (Bellman, 1957).
+  \item \textbf{Undiscounted episodic tasks.} With $\gamma = 1$, the
+    returns are finite if every policy reaches a terminal state with
+    probability $1$ (\emph{proper} policies); the results of this chapter
+    extend to this \emph{stochastic shortest path} setting (Bertsekas and
+    Tsitsiklis, 1996).
+  \item \textbf{Average reward.} For continuing tasks one can maximise
+    $\lim_{T \to \infty} \frac{1}{T} \E[\sum_{t=1}^T R_t]$. The values are
+    then defined relative to the average reward $\bar r_\pi$, $v_\pi(s) =
+    \E_\pi[\sum_t (R_{t+1} - \bar r_\pi) \mid S_0 = s]$, and satisfy
+    $v_\pi(s) = \sum_a \pi(a \mid s) \sum_{s', r} p(s', r \mid s, a) [r -
+    \bar r_\pi + v_\pi(s')]$. Discounting with $\gamma$ close to $1$ is a
+    common approximation of this criterion.
+\end{itemize}
+
+\section{Summary}
+
+\begin{itemize}[nosep]
+  \item An MDP is described by states, actions, a transition-reward kernel
+    $p$ satisfying the Markov property, and a discount factor $\gamma$.
+  \item The value functions $v_\pi$ and $q_\pi$ are expected returns; they
+    are the unique fixed points of the Bellman expectation operators.
+  \item The optimal value $v_\star$ is the unique fixed point of the
+    Bellman optimality operator, a $\gamma$-contraction; any greedy policy
+    with respect to $v_\star$ (or $q_\star$) is optimal.
+  \item For Pacman, the state is the board configuration; the feature
+    planes of game \code{v1} contain it entirely, while game \code{v2} is
+    partially observable.
+\end{itemize}
+The next chapters turn these equations into algorithms: first when $p$ is
+known (dynamic programming), then when it must be replaced by experience.

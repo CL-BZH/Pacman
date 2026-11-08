@@ -140,6 +140,18 @@ class PacmanGhost:
     def move(self, env):
         ghost_pos = self.pos
         heading =  self.heading
+
+        def keeps_heading(pos):
+            '''
+            True if moving to 'pos' keeps the ghost's current direction.
+            The original game (v1) compared the position with the direction
+            letter, which is never true: its ghosts have no preference for
+            their direction. The fix is enabled by the configuration
+            (PacmanConf.ghost_keep_direction), so that game v1 is unchanged.
+            '''
+            if not getattr(env, "ghost_keep_direction", False):
+                return tuple(pos) == heading # original comparison (never true)
+            return heading is not None and env.heading(np.asarray(ghost_pos), np.asarray(pos)) == heading
         all_moves = np.asarray(list(set(map(tuple, env.map_actions[ghost_pos[0],ghost_pos[1]]))))
         # First, update the ghost aggressiveness level
         # (it will be 0 if pacman has power credit)
@@ -160,7 +172,7 @@ class PacmanGhost:
                     if np.linalg.norm(ghost_pos - pos) == 0:
                         weights[idx] = 0
                         continue 
-                    if heading != None and tuple(pos) == heading:
+                    if heading != None and keeps_heading(pos):
                         # Encourage to keep same direction
                         weights[idx] *= 1.5
                     # Go towards pacman
@@ -204,7 +216,7 @@ class PacmanGhost:
                             else:
                                 weights[idx] = 1
                             
-                elif tuple(pos) == heading:
+                elif keeps_heading(pos):
                     # Encourage to keep same direction
                     weights[idx] *= 1.5
                     

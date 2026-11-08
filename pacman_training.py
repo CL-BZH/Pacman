@@ -9,6 +9,7 @@ Created on Wed May 22 09:32:36 2024
 from pacman_maps import pacman_map1
 from pacman_maps import pacman_map2
 from pacman_maps import pacman_map3
+from pacman_maps import pacman_map4
 from pacman_conf import PacmanConf
 from pacman_env import PacmanEnvironment
 from ghost_agents import EdibleGhostBehaviors
@@ -20,7 +21,9 @@ import pathlib
 from pathlib import Path
 
 
-pacman_conf = PacmanConf(playground = pacman_map3,
+# Game "v1": the original game (all the results of the README before the section "Game v2" were
+# obtained on it, and the agents in Trainings/ were trained on it).
+pacman_conf_v1 = PacmanConf(playground = pacman_map3,
                             ghost_aggressiveness_levels = [0.74, 0.64], #, 0.52, 0.42],
                             edible_ghosts_behavior = [EdibleGhostBehaviors.FLEE_FAST, EdibleGhostBehaviors.FLEE_FAST],
                             n_ghosts = 2,
@@ -34,7 +37,29 @@ pacman_conf = PacmanConf(playground = pacman_map3,
                             win_reward = 30,
                             penalty_per_ghost = -5)
 
-def a2c_training(state_dict=None, total_steps=20_000_000):
+# Game "v2": bigger maze, eaten ghosts come back, shorter power, small reward for eating a ghost.
+pacman_conf_v2 = PacmanConf(playground = pacman_map4,
+                            ghost_aggressiveness_levels = [0.74, 0.64, 0.52],
+                            edible_ghosts_behavior = [EdibleGhostBehaviors.FLEE_FAST] * 3,
+                            n_ghosts = 3,
+                            n_power_cookies = 4,
+                            max_power_credit = 10,
+                            eat_cookie_reward = 0.8,
+                            eat_power_cookie_reward = 1.3,
+                            eat_ghost_reward = 5,
+                            living_cost = -0.15,
+                            lose_reward = -35,
+                            win_reward = 30,
+                            penalty_per_ghost = 0, # ghosts come back: no penalty for ghosts left at the end
+                            ghost_respawn_delay = 15,
+                            ghost_respawn_min_distance = 6,
+                            ghost_keep_direction = True)
+
+GAMES = {"v1": pacman_conf_v1, "v2": pacman_conf_v2}
+pacman_conf = pacman_conf_v1 # default game (the one of the trained agents in Trainings/)
+
+def a2c_training(state_dict=None, total_steps=20_000_000, game="v1"):
+    pacman_conf = GAMES[game]
     n_envs = 16
     n_steps = 128             # rollout length per environment (update on n_envs * n_steps transitions)
     n_frames = 2              # 2 stacked frames: the direction in which the ghosts move is visible
@@ -69,14 +94,15 @@ def a2c_training(state_dict=None, total_steps=20_000_000):
     new_dir.mkdir(parents=True)
     a2c_pacman_agent.save(str(new_dir / "state_dict.pth"))
     (new_dir / 'config.txt').write_text("\n".join([
-        f"pacman_conf = {pacman_conf}", f"n_envs = {n_envs}", f"n_steps = {n_steps}",
+        f"game = {game}", f"pacman_conf = {pacman_conf}", f"n_envs = {n_envs}", f"n_steps = {n_steps}",
         f"n_frames = {n_frames}", f"initial_lr = {initial_lr}", f"min_lr = {min_lr}",
         f"ppo_epochs = {ppo_epochs}", f"n_minibatches = {n_minibatches}",
         f"entropy_coef = {entropy_coef}", f"curriculum_fraction = {curriculum_fraction}",
         f"curriculum_start = {curriculum_start}", f"total_steps = {total_steps}"]))
     
     
-def dqn_training(state_dict=None, total_steps=5_000_000):
+def dqn_training(state_dict=None, total_steps=5_000_000, game="v1"):
+    pacman_conf = GAMES[game]
     n_envs = 16           # environments stepped in lockstep (batched forward pass)
     n_frames = 2          # 2 stacked frames: lets the network see in which direction the ghosts move
     
@@ -109,7 +135,7 @@ def dqn_training(state_dict=None, total_steps=5_000_000):
     new_dir.mkdir(parents=True)
     dqn_pacman_agent.save(str(new_dir / "state_dict.pth"))
     (new_dir / 'config.txt').write_text("\n".join([
-        f"pacman_conf = {pacman_conf}", f"n_envs = {n_envs}", f"n_frames = {n_frames}",
+        f"game = {game}", f"pacman_conf = {pacman_conf}", f"n_envs = {n_envs}", f"n_frames = {n_frames}",
         f"initial_lr = {initial_lr}", f"min_lr = {min_lr}", f"tau = {tau}", f"n_step = {n_step}",
         f"batch_size = {batch_size}", f"buffer_capacity = {buffer_capacity}",
         f"total_steps = {total_steps}"]))

@@ -29,4 +29,11 @@ class PacmanConf:
     lose_reward: float             # Reward for being eaten by a ghost
     win_reward: float              # Reward for finishing the game (ate all cookies) without being eaten by a ghost
     penalty_per_ghost: float       # Penalty for each ghost not eaten when winning the gmae
+    ghost_respawn_delay: int = 0   # An eaten ghost comes back after this number of moves, and not before
+                                   # Pacman's power has ended (0: eaten ghosts never come back)
+    ghost_respawn_min_distance: int = 6 # A ghost comes back at a random cell at least this number of
+                                        # moves away from Pacman
+    ghost_keep_direction: bool = False  # When a ghost moves randomly, the move that keeps its direction
+                                        # has a weight 1.5 (False in game v1, where the intended
+                                        # preference was never applied because of a bug)
 

@@ -1,0 +1,287 @@
+\chapter{Multi-armed bandits}
+\label{ch:bandits}
+
+Before facing sequential decisions, we study the exploration problem in its
+purest form. A \emph{multi-armed bandit} is an MDP with a single state:
+each action (``arm'') gives a random reward drawn from an unknown
+distribution, and the agent must find the best arm while collecting as much
+reward as possible along the way. Every reward spent trying an arm is a
+reward not collected from the best one; every arm not tried may be the
+best. This \emph{exploration--exploitation dilemma} reappears in all of RL
+(the $\varepsilon$-greedy policy of DQN, the entropy bonus of PPO,
+\cref{ch:exploration}), and the bandit algorithms of this chapter are used
+directly in planning: Monte Carlo tree search chooses its simulations with
+the UCB rule (\cref{ch:model-based}).
+
+\section{The problem}
+
+\begin{definition}{Stochastic multi-armed bandit}{bandit}
+  A bandit with $K$ arms is a family of reward distributions $\nu_1, \dots,
+  \nu_K$ on $\R$ with means $\mu_1, \dots, \mu_K$. At each round $t = 1, 2,
+  \dots, T$ the agent chooses an arm $A_t$ and receives a reward $R_t \sim
+  \nu_{A_t}$, independent of the past given $A_t$. Let $\mu^\star = \max_a
+  \mu_a$, $\Delta_a = \mu^\star - \mu_a$ the \emph{gap} of arm $a$, and
+  $N_a(t)$ the number of times arm $a$ was played in the first $t$ rounds.
+  The \emph{regret} after $T$ rounds is
+  \begin{equation}
+    \mathcal{R}_T = T \mu^\star - \E\left[ \sum_{t=1}^{T} R_t \right].
+  \end{equation}
+\end{definition}
+
+\begin{proposition}{Regret decomposition}{regret-decomp}
+  $\mathcal{R}_T = \sum_{a=1}^{K} \Delta_a\, \E\left[N_a(T)\right]$.
+\end{proposition}
+
+\begin{proof}
+  Given $A_t$, the expected reward is $\mu_{A_t}$, so $\E[\sum_t R_t] =
+  \E[\sum_t \mu_{A_t}] = \E[\sum_a \mu_a N_a(T)]$. Since $\sum_a N_a(T) =
+  T$, $T \mu^\star - \sum_a \mu_a N_a(T) = \sum_a (\mu^\star - \mu_a)
+  N_a(T)$; take expectations.
+\end{proof}
+
+A good algorithm therefore plays each suboptimal arm rarely, and the more
+rarely the larger its gap. The estimate of an arm after $n$ plays is the
+sample mean $\hat\mu_a$ of its rewards, which can be updated incrementally
+(\cref{prop:incremental}).
+
+\section{Greedy and $\varepsilon$-greedy}
+
+The \emph{greedy} algorithm plays each arm once, then always the arm of
+largest $\hat\mu_a$. If the best arm happens to give a bad first reward, it
+may never be played again: the regret grows linearly with $T$ with positive
+probability. The \emph{$\varepsilon$-greedy} algorithm plays a uniformly
+random arm with probability $\varepsilon$ and the greedy arm otherwise.
+
+\begin{proposition}{Constant exploration has linear regret}{eps-linear}
+  With a constant $\varepsilon > 0$, the regret of $\varepsilon$-greedy
+  satisfies $\mathcal{R}_T \geq \frac{\varepsilon\, T}{K} \sum_a
+  \Delta_a$.
+\end{proposition}
+
+\begin{proof}
+  At each round, with probability at least $\varepsilon / K$ arm $a$ is
+  played as a random arm, so $\E[N_a(T)] \geq \varepsilon T / K$; apply
+  \cref{prop:regret-decomp}.
+\end{proof}
+
+Decreasing $\varepsilon_t$ (e.g.\ $\varepsilon_t \propto 1/t$) can give a
+logarithmic regret, but the right schedule depends on the unknown gaps.
+The next algorithms explore \emph{where it is needed}: arms that are
+clearly worse are abandoned quickly, arms that might be the best are
+explored more.
+
+\section{Upper confidence bounds}
+
+The principle of \emph{optimism in the face of uncertainty}: play the arm
+whose mean \emph{could} be the largest, given the data. It relies on a
+concentration inequality.
+
+\begin{lemma}{Hoeffding's inequality (stated without proof)}{hoeffding}
+  Let $X_1, \dots, X_n$ be independent random variables with values in
+  $[0, 1]$ and mean $\mu$, and $\bar X_n = \frac{1}{n} \sum_i X_i$. For
+  every $c > 0$,
+  \begin{equation}
+    \Prob\left(\bar X_n \geq \mu + c\right) \leq e^{-2 n c^2}, \qquad
+    \Prob\left(\bar X_n \leq \mu - c\right) \leq e^{-2 n c^2}.
+  \end{equation}
+\end{lemma}
+
+\begin{definition}{UCB1}{ucb1}
+  For rewards in $[0, 1]$, UCB1 (Auer, Cesa-Bianchi and Fischer, 2002)
+  plays each arm once, then at round $t$ the arm maximising
+  \begin{equation}
+    \label{eq:ucb1}
+    \hat\mu_a + \sqrt{\frac{2 \ln t}{N_a(t-1)}}.
+  \end{equation}
+\end{definition}
+
+The bonus is large for arms played rarely, and decreases as their estimate
+becomes reliable; the slow growth of $\ln t$ ensures that every arm is
+eventually retried.
+
+\begin{theorem}{Regret of UCB1}{ucb-regret}
+  For rewards in $[0, 1]$ and every suboptimal arm $a$ ($\Delta_a > 0$),
+  \begin{equation}
+    \E\left[N_a(T)\right] \leq \frac{8 \ln T}{\Delta_a^2} + 1 +
+    \frac{\pi^2}{3},
+    \qquad \text{hence} \qquad
+    \mathcal{R}_T \leq \sum_{a : \Delta_a > 0} \left( \frac{8 \ln
+    T}{\Delta_a} + \left(1 + \frac{\pi^2}{3}\right) \Delta_a \right).
+  \end{equation}
+\end{theorem}
+
+\begin{proof}
+  Fix a suboptimal arm $a$ and an optimal arm $\star$. Let $c_{t, s} =
+  \sqrt{2 \ln t / s}$, let $\hat\mu_{a, s}$ be the mean of the first $s$
+  rewards of arm $a$, and $\ell = \lceil 8 \ln T / \Delta_a^2 \rceil$.
+  Arm $a$ is played at most $\ell$ times while $N_a < \ell$, so
+  \begin{equation*}
+    N_a(T) \leq \ell + \sum_{t = K+1}^{T} \mathbb{1}\left[A_t = a,\
+    N_a(t-1) \geq \ell\right].
+  \end{equation*}
+  If $A_t = a$, the index of $a$ is at least that of $\star$:
+  $\hat\mu_{\star, s} + c_{t, s} \leq \hat\mu_{a, s_a} + c_{t, s_a}$
+  for the current counts $s = N_\star(t-1)$ and $s_a = N_a(t-1) \geq
+  \ell$. This inequality implies one of the three events
+  \begin{equation*}
+    \text{(E1) } \hat\mu_{\star, s} \leq \mu^\star - c_{t, s}, \qquad
+    \text{(E2) } \hat\mu_{a, s_a} \geq \mu_a + c_{t, s_a}, \qquad
+    \text{(E3) } \mu^\star < \mu_a + 2 c_{t, s_a},
+  \end{equation*}
+  for if none holds, $\hat\mu_{\star, s} + c_{t, s} > \mu^\star \geq
+  \mu_a + 2 c_{t, s_a} > \hat\mu_{a, s_a} + c_{t, s_a}$. Event (E3) is
+  impossible: $t \leq T$ and $s_a \geq \ell \geq 8 \ln T / \Delta_a^2$
+  give $2 c_{t, s_a} \leq 2 \sqrt{2 \ln T \cdot \Delta_a^2 / (8 \ln T)}
+  = \Delta_a$. By Hoeffding's inequality, for fixed $s$ and $s_a$, (E1) and
+  (E2) have probability at most $e^{-2 s \cdot 2 \ln t / s} = t^{-4}$.
+  Since the counts are random, we take a union bound over their possible
+  values $1 \leq s, s_a \leq t$:
+  \begin{equation*}
+    \E[N_a(T)] \leq \ell + \sum_{t=K+1}^{T} \sum_{s=1}^{t}
+    \sum_{s_a=1}^{t} 2\, t^{-4}
+    \leq \ell + 2 \sum_{t \geq 1} t^{-2} = \ell + \frac{\pi^2}{3},
+  \end{equation*}
+  and $\ell \leq 8 \ln T / \Delta_a^2 + 1$. The regret bound follows from
+  \cref{prop:regret-decomp}.
+\end{proof}
+
+The regret of UCB1 grows like $\ln T$, and this is optimal up to the
+constant:
+
+\begin{theorem}{Lai--Robbins lower bound (stated without proof)}{lai-robbins}
+  For any algorithm whose regret is $o(T^\alpha)$ for every $\alpha > 0$ on
+  every bandit of a given parametric family, and every suboptimal arm $a$,
+  \begin{equation}
+    \liminf_{T \to \infty} \frac{\E[N_a(T)]}{\ln T} \geq
+    \frac{1}{\mathrm{KL}(\nu_a \,\|\, \nu_\star)},
+  \end{equation}
+  where KL is the Kullback--Leibler divergence (Lai and Robbins, 1985).
+\end{theorem}
+
+\section{Thompson sampling}
+
+Thompson sampling (1933) is Bayesian: maintain a posterior distribution
+over the mean of each arm, sample one value from each posterior, and play
+the arm whose sample is largest. Each arm is played with the posterior
+probability that it is the best.
+
+\begin{algobox}{Thompson sampling for Bernoulli rewards}
+  \begin{algorithmic}[1]
+    \State $S_a \gets 0$, $F_a \gets 0$ for every arm
+      \Comment{successes and failures}
+    \For{$t = 1, \dots, T$}
+      \State sample $\theta_a \sim \mathrm{Beta}(1 + S_a, 1 + F_a)$ for
+        every arm
+      \State play $A_t = \argmax_a \theta_a$, observe $R_t \in \{0, 1\}$
+      \State $S_{A_t} \gets S_{A_t} + R_t$;\quad
+        $F_{A_t} \gets F_{A_t} + 1 - R_t$
+    \EndFor
+  \end{algorithmic}
+\end{algobox}
+
+The $\mathrm{Beta}(1 + S, 1 + F)$ distribution is the posterior of a
+Bernoulli mean under a uniform prior after $S$ successes and $F$
+failures. Thompson sampling attains the Lai--Robbins bound for Bernoulli
+bandits (Kaufmann, Korda and Munos, 2012; Agrawal and Goyal, 2012), and it
+is often the best performer in practice.
+
+\begin{remark}{A testbed}{bandit-testbed}
+  The script \code{Course/code/bandits.py} compares the algorithms on
+  Bernoulli bandits with $K = 10$ arms whose means are drawn uniformly in
+  $[0, 1]$, averaging the regret over $100$ such bandits:
+  \begin{center}
+    \begin{tabular}{@{}lcccc@{}}
+      \toprule
+      Regret after $T$ rounds & $100$ & $1\,000$ & $10\,000$ &
+        $100\,000$ \\
+      \midrule
+      Greedy & $8.8$ & $28.2$ & $218.6$ & $2121.9$ \\
+      $\varepsilon$-greedy, $\varepsilon = 0.1$ & $12.2$ & $57.1$ & $441.0$ &
+        $4177.5$ \\
+      $\varepsilon$-greedy, $\varepsilon = 0.01$ & $9.8$ & $36.5$ & $227.2$ &
+        $857.0$ \\
+      UCB1 & $27.6$ & $132.8$ & $362.1$ & $692.9$ \\
+      Thompson sampling & $13.9$ & $27.4$ & $44.6$ & $64.1$ \\
+      \bottomrule
+    \end{tabular}
+  \end{center}
+  Greedy and $\varepsilon$-greedy have a linear regret: each tenfold
+  increase of $T$ multiplies it by about $10$ (by $4$ for $\varepsilon =
+  0.01$, which is still in transition). Thompson sampling adds about $19$
+  per tenfold increase: the logarithmic growth of the theory. UCB1 is also
+  sublinear but has a large constant: its bonus $\sqrt{2 \ln t / n}$,
+  designed for the worst case of rewards in $[0, 1]$, keeps exploring
+  long after the arms are well estimated, so it is overtaken by
+  $\varepsilon = 0.01$ at first and only passes it after $10\,000$ rounds.
+  Guarantees of order $\ln T$ say nothing about the constants.
+\end{remark}
+
+\section{Gradient bandits}
+
+Another approach learns \emph{preferences} $H(a)$ and plays the softmax
+policy $\pi(a) = e^{H(a)} / \sum_b e^{H(b)}$. After playing $A_t$ and
+receiving $R_t$, the \emph{gradient bandit} algorithm updates
+\begin{equation}
+  \label{eq:gradient-bandit}
+  H(b) \gets H(b) + \alpha (R_t - \bar R_t) \left( \mathbb{1}[b = A_t] -
+  \pi(b) \right) \qquad \text{for every arm } b,
+\end{equation}
+where $\bar R_t$ is a \emph{baseline}, for example the average of the past
+rewards.
+
+\begin{proposition}{The gradient bandit is stochastic gradient ascent}%
+  {grad-bandit}
+  Let $J(H) = \sum_a \pi(a) \mu_a$ be the expected reward. For any
+  baseline $b$ that does not depend on $A_t$, the expected update of
+  \eqref{eq:gradient-bandit} is $\alpha\, \nabla_H J$.
+\end{proposition}
+
+\begin{proof}
+  By \cref{prop:softmax-score} (proved in \cref{ch:pg}),
+  $\partial \pi(a) / \partial H(b) = \pi(a) (\mathbb{1}[a = b] - \pi(b))$.
+  Hence
+  \begin{equation*}
+    \frac{\partial J}{\partial H(b)} = \sum_a \mu_a\, \pi(a) \left(
+    \mathbb{1}[a = b] - \pi(b) \right)
+    = \E\left[ \mu_{A_t} \left( \mathbb{1}[A_t = b] - \pi(b) \right)
+    \right].
+  \end{equation*}
+  Given $A_t$, $\E[R_t] = \mu_{A_t}$, and the baseline term has mean zero:
+  $\E[\mathbb{1}[A_t = b] - \pi(b)] = \pi(b) - \pi(b) = 0$.
+\end{proof}
+
+This is the one-state case of the policy gradient theorem
+(\cref{thm:pg}): the baseline reduces the variance without changing the
+expected update, exactly as in actor-critic methods.
+
+\section{Contextual bandits}
+
+In a \emph{contextual bandit}, a context $x_t$ (a user, a page, a
+situation) is observed before choosing the arm, and the reward depends on
+both. It is an MDP whose next state does not depend on the action:
+decisions have no long-term consequences, but the policy must generalise
+over contexts. LinUCB (Li et al., 2010) assumes $\E[R \mid x, a] =
+\theta_a^\top x$, estimates $\theta_a$ by ridge regression with matrix
+$M_a = \lambda I + \sum_{t : A_t = a} x_t x_t^\top$, and plays
+\begin{equation}
+  \argmax_a \left( \hat\theta_a^\top x_t + \beta \sqrt{x_t^\top M_a^{-1}
+  x_t} \right),
+\end{equation}
+the bonus measuring the uncertainty of the estimate in the direction of the
+context. Contextual bandits are the standard model of recommendation and
+online advertising.
+
+\section{Summary}
+
+\begin{itemize}[nosep]
+  \item The regret is the sum over suboptimal arms of the gap times the
+    number of plays; constant exploration gives a linear regret.
+  \item UCB1 explores optimistically and has a regret in $O(\ln T)$, the
+    optimal order (Lai--Robbins); Thompson sampling samples from the
+    posterior, is asymptotically optimal and usually better in practice.
+  \item The gradient bandit is a one-state policy gradient method, with a
+    baseline.
+  \item Exploration in MDPs is harder: an action can be informative
+    because of where it leads, not only through its immediate reward
+    (\cref{ch:exploration}).
+\end{itemize}

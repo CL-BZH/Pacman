@@ -1,0 +1,268 @@
+\chapter{Value function approximation}
+\label{ch:vfa}
+
+When the states are too many for a table, the value function is
+represented by a parametrised function $\hat v(s; \mathbf{w})$ with far
+fewer parameters than states. This chapter studies the simplest and best
+understood case, \emph{linear} approximation, where the theory is complete:
+it shows what TD learning converges to, how far this is from the best
+possible approximation, and why off-policy learning can diverge. Deep
+networks (\cref{ch:dqn}) have no such guarantees, but the phenomena
+identified here explain much of their behaviour.
+
+\section{The prediction objective}
+
+We approximate the value $v_\pi$ of a fixed policy. Errors in different
+states cannot all be made small, so we weight them by a distribution $d$
+over states, usually the frequency with which the policy visits them.
+
+\begin{definition}{Linear approximation and weighted norm}{linear-fa}
+  A \emph{feature map} $\mathbf{x} : \States \to \R^m$ assigns to each state
+  a vector of $m$ features; the approximation is $\hat v(s; \mathbf{w}) =
+  \mathbf{w}^\top \mathbf{x}(s)$. Let $X \in \R^{\abs{\States} \times m}$ be
+  the matrix whose rows are the $\mathbf{x}(s)^\top$ (assumed of full column
+  rank) and $D = \mathrm{diag}(d)$. The weighted norm and the \emph{value
+  error} are
+  \begin{equation}
+    \norm{u}_D = \sqrt{\sum_s d(s)\, u(s)^2}, \qquad
+    \overline{\mathrm{VE}}(\mathbf{w}) = \norm{X \mathbf{w} - v_\pi}_D^2.
+  \end{equation}
+  The \emph{projection} $\Pi$ onto the span of the features is $\Pi u = X
+  \mathbf{w}_u$ with $\mathbf{w}_u = \argmin_{\mathbf{w}} \norm{X
+  \mathbf{w} - u}_D$, i.e.\ $\Pi = X (X^\top D X)^{-1} X^\top D$.
+\end{definition}
+
+A table is the special case of one-hot features ($m = \abs{\States}$, $X =
+I$). Classical feature constructions include polynomials, Fourier bases,
+radial basis functions and \emph{tile coding} (several overlapping grids,
+each state activating one tile per grid); a neural network can be seen as
+a feature map that is learnt together with the last linear layer.
+
+\section{Gradient Monte Carlo and semi-gradient TD}
+
+Stochastic gradient descent on $\overline{\mathrm{VE}}$ would need
+$v_\pi(S_t)$. Monte Carlo replaces it by the return $G_t$, an unbiased
+sample:
+\begin{equation}
+  \mathbf{w} \gets \mathbf{w} + \alpha \left( G_t - \mathbf{w}^\top
+  \mathbf{x}(S_t) \right) \mathbf{x}(S_t),
+\end{equation}
+a true stochastic gradient step, which converges (under the Robbins--Monro
+conditions) to the minimiser of $\overline{\mathrm{VE}}$ when the states
+are sampled from $d$. Semi-gradient TD(0) uses the TD target instead,
+treating it as a constant:
+\begin{equation}
+  \label{eq:linear-td}
+  \mathbf{w} \gets \mathbf{w} + \alpha\, \delta_t\, \mathbf{x}(S_t),
+  \qquad
+  \delta_t = R_{t+1} + \gamma\, \mathbf{w}^\top \mathbf{x}(S_{t+1}) -
+  \mathbf{w}^\top \mathbf{x}(S_t).
+\end{equation}
+
+\begin{proposition}{Expected TD update}{td-expected}
+  Let $P_\pi$ and $r_\pi$ be as in \cref{prop:matrix}. If $S_t \sim d$ and
+  the transition follows $\pi$, then
+  \begin{equation}
+    \E\left[\delta_t\, \mathbf{x}(S_t)\right] = \mathbf{b} - A \mathbf{w},
+    \qquad A = X^\top D (I - \gamma P_\pi) X, \qquad \mathbf{b} = X^\top D
+    r_\pi.
+  \end{equation}
+\end{proposition}
+
+\begin{proof}
+  Conditioning on $S_t = s$,
+  \begin{equation*}
+    \E[\delta_t \mathbf{x}(S_t)] = \sum_s d(s)\, \mathbf{x}(s) \left(
+    r_\pi(s) + \gamma \sum_{s'} P_\pi(s, s')\, \mathbf{x}(s')^\top
+    \mathbf{w} - \mathbf{x}(s)^\top \mathbf{w} \right),
+  \end{equation*}
+  which is the stated matrix expression.
+\end{proof}
+
+If TD converges, it is to a point where the expected update vanishes: the
+\emph{TD fixed point} $\mathbf{w}_{\mathrm{TD}} = A^{-1} \mathbf{b}$. It is
+generally \emph{not} the minimiser of $\overline{\mathrm{VE}}$.
+
+\section{The TD fixed point}
+
+\begin{lemma}{$P_\pi$ is non-expansive in $\norm{\cdot}_D$}{p-nonexpansive}
+  If $d P_\pi \leq d$ componentwise (true if $d$ is the stationary
+  distribution of $P_\pi$, or the expected number of visits of each state
+  in an episodic task), then $\norm{P_\pi u}_D \leq \norm{u}_D$ for every
+  $u$.
+\end{lemma}
+
+\begin{proof}
+  Each row of $P_\pi$ is a (sub-)probability vector, so by Jensen's
+  inequality (convexity of $x \mapsto x^2$, and the missing mass counting
+  as a value $0$) $\left( \sum_{s'} P_\pi(s, s') u(s') \right)^2 \leq
+  \sum_{s'} P_\pi(s, s')\, u(s')^2$. Hence
+  \begin{equation*}
+    \norm{P_\pi u}_D^2 \leq \sum_s d(s) \sum_{s'} P_\pi(s, s')\, u(s')^2 =
+    \sum_{s'} (d P_\pi)(s')\, u(s')^2 \leq \sum_{s'} d(s')\, u(s')^2.
+    \qedhere
+  \end{equation*}
+\end{proof}
+
+\begin{theorem}{Convergence of on-policy linear TD}{linear-td}
+  Under the assumption of \cref{lem:p-nonexpansive}, the matrix $A$ is
+  positive definite: $\mathbf{w}^\top A \mathbf{w} \geq (1 - \gamma)
+  \norm{X \mathbf{w}}_D^2 > 0$ for $\mathbf{w} \neq 0$. Consequently the
+  expected update $\mathbf{w}_{k+1} = \mathbf{w}_k + \alpha (\mathbf{b} - A
+  \mathbf{w}_k)$ converges to $\mathbf{w}_{\mathrm{TD}}$ for every small
+  enough $\alpha > 0$.
+\end{theorem}
+
+\begin{proof}
+  Let $\mathbf{y} = X \mathbf{w}$. By Cauchy--Schwarz in the inner product
+  $\langle u, v \rangle_D = u^\top D v$ and \cref{lem:p-nonexpansive},
+  \begin{equation*}
+    \mathbf{w}^\top A \mathbf{w} = \norm{\mathbf{y}}_D^2 - \gamma
+    \langle \mathbf{y}, P_\pi \mathbf{y} \rangle_D
+    \geq \norm{\mathbf{y}}_D^2 - \gamma \norm{\mathbf{y}}_D \norm{P_\pi
+    \mathbf{y}}_D \geq (1 - \gamma) \norm{\mathbf{y}}_D^2,
+  \end{equation*}
+  and $\mathbf{y} \neq 0$ when $\mathbf{w} \neq 0$ ($X$ has full column
+  rank and we assume $d > 0$). Let $\lambda > 0$ be the smallest eigenvalue
+  of the symmetric part $(A + A^\top)/2$, so that $\mathbf{e}^\top A
+  \mathbf{e} \geq \lambda \norm{\mathbf{e}}^2$. The error $\mathbf{e}_k =
+  \mathbf{w}_k - \mathbf{w}_{\mathrm{TD}}$ satisfies $\mathbf{e}_{k+1} =
+  (I - \alpha A) \mathbf{e}_k$, so
+  \begin{equation*}
+    \norm{\mathbf{e}_{k+1}}^2 = \norm{\mathbf{e}_k}^2 - 2 \alpha
+    \mathbf{e}_k^\top A \mathbf{e}_k + \alpha^2 \norm{A \mathbf{e}_k}^2
+    \leq \left( 1 - 2 \alpha \lambda + \alpha^2 \norm{A}^2 \right)
+    \norm{\mathbf{e}_k}^2,
+  \end{equation*}
+  and the factor is less than $1$ for $0 < \alpha < 2 \lambda /
+  \norm{A}^2$.
+\end{proof}
+
+The stochastic algorithm \eqref{eq:linear-td}, with decreasing step sizes,
+converges to $\mathbf{w}_{\mathrm{TD}}$ with probability $1$ (Tsitsiklis and
+Van Roy, 1997). How good is the fixed point?
+
+\begin{theorem}{Projected Bellman equation and error bound}{td-bound}
+  Under the same assumption, $v_{\mathrm{TD}} = X \mathbf{w}_{\mathrm{TD}}$
+  is the unique solution of the \emph{projected Bellman equation} $v = \Pi
+  \T^\pi v$, and
+  \begin{equation}
+    \label{eq:td-bound}
+    \norm{v_{\mathrm{TD}} - v_\pi}_D \leq \frac{1}{\sqrt{1 - \gamma^2}}\,
+    \norm{\Pi v_\pi - v_\pi}_D.
+  \end{equation}
+\end{theorem}
+
+\begin{proof}
+  $\mathbf{b} - A \mathbf{w} = X^\top D (r_\pi + \gamma P_\pi X \mathbf{w} -
+  X \mathbf{w}) = X^\top D (\T^\pi v - v)$ with $v = X \mathbf{w}$. It
+  vanishes iff $\T^\pi v - v$ is $D$-orthogonal to the span of $X$, i.e.\
+  iff $\Pi(\T^\pi v - v) = 0$, i.e.\ $v = \Pi \T^\pi v$ since $\Pi v = v$.
+  The map $\Pi \T^\pi$ is a $\gamma$-contraction in $\norm{\cdot}_D$
+  ($\Pi$ is an orthogonal projection, hence non-expansive, and $\norm{\T^\pi
+  u - \T^\pi u'}_D = \gamma \norm{P_\pi (u - u')}_D \leq \gamma \norm{u -
+  u'}_D$), which gives uniqueness. For the bound, $v_\pi - \Pi v_\pi$ is
+  orthogonal to the span, which contains $\Pi v_\pi - v_{\mathrm{TD}}$; by
+  Pythagoras and the contraction, using $v_\pi = \T^\pi v_\pi$,
+  \begin{align*}
+    \norm{v_\pi - v_{\mathrm{TD}}}_D^2
+    &= \norm{v_\pi - \Pi v_\pi}_D^2 + \norm{\Pi \T^\pi v_\pi - \Pi \T^\pi
+      v_{\mathrm{TD}}}_D^2 \\
+    &\leq \norm{v_\pi - \Pi v_\pi}_D^2 + \gamma^2 \norm{v_\pi -
+      v_{\mathrm{TD}}}_D^2,
+  \end{align*}
+  and we solve for $\norm{v_\pi - v_{\mathrm{TD}}}_D^2$.
+\end{proof}
+
+\begin{pacman}{Linear features for the reduced game}{vfa-escape}
+  We approximate the value $v_\star$ of the optimal policy of the reduced
+  game of \cref{pac:dp-escape} ($5776$ non-terminal states) with $8$
+  features of the board: a constant, the maze distances from Pacman to the
+  power cookie, from Pacman to the ghost and from the ghost to the cookie,
+  the square of the first, the distance to the ghost capped at $6$, and
+  two indicators (ghost within $2$ cells; ghost closer to the cookie than
+  Pacman). The weighting $d$ is the expected number of visits from a
+  uniform start, which satisfies $d P_\pi \leq d$. The script
+  \code{Course/code/vfa\_escape.py} computes exactly:
+  \begin{center}
+    \begin{tabular}{@{}lc@{}}
+      \toprule
+      Quantity & Value \\
+      \midrule
+      $\norm{v_\star}_D$ & $8.261$ \\
+      best approximation $\norm{\Pi v_\star - v_\star}_D$ & $0.245$ \\
+      TD fixed point $\norm{v_{\mathrm{TD}} - v_\star}_D$ & $0.262$ \\
+      bound \eqref{eq:td-bound} & $1.734$ \\
+      \bottomrule
+    \end{tabular}
+  \end{center}
+  Eight numbers summarise $5776$ values to within $3\%$, and the TD fixed
+  point is almost as good as the best approximation: the bound, which must
+  hold for every problem, is pessimistic here. The smallest eigenvalue of
+  the symmetric part of $A$ is $0.005$, positive as
+  \cref{thm:linear-td} predicts.
+\end{pacman}
+
+\section{Least-squares TD}
+
+Since $\mathbf{w}_{\mathrm{TD}} = A^{-1} \mathbf{b}$, one can estimate $A$
+and $\mathbf{b}$ from data and solve the linear system directly
+(LSTD, Bradtke and Barto, 1996):
+\begin{equation}
+  \hat A = \sum_t \mathbf{x}(S_t) \left( \mathbf{x}(S_t) - \gamma\,
+  \mathbf{x}(S_{t+1}) \right)^\top + \varepsilon I, \qquad
+  \hat{\mathbf{b}} = \sum_t R_{t+1}\, \mathbf{x}(S_t), \qquad
+  \mathbf{w} = \hat A^{-1} \hat{\mathbf{b}}.
+\end{equation}
+LSTD has no step size and uses the data optimally, at a cost of $O(m^2)$
+per step (with incremental inverses) instead of $O(m)$; it is attractive
+for moderate numbers of features.
+
+\section{Off-policy divergence}
+
+The proof of \cref{thm:linear-td} used $d P_\pi \leq d$: the states must be
+weighted as the policy being evaluated visits them. With another weighting
+(off-policy learning, or a replay memory filled by other policies), $A$ can
+fail to be positive definite and TD can diverge. \cref{prop:divergence}
+gives a two-state example; the classical one is \emph{Baird's
+counterexample} (1995): seven states, linear features with more parameters
+than needed, uniform off-policy updates, and the weights diverge for every
+positive step size, although an exact representation exists. This is the
+\emph{deadly triad} of function approximation, bootstrapping and
+off-policy learning.
+
+Two families of remedies exist. \emph{Gradient TD} methods (GTD2, TDC,
+Sutton et al., 2009) perform true stochastic gradient descent on the
+\emph{mean squared projected Bellman error}
+\begin{equation}
+  \overline{\mathrm{PBE}}(\mathbf{w}) = \norm{\Pi \T^\pi X \mathbf{w} - X
+  \mathbf{w}}_D^2 = (\mathbf{b} - A \mathbf{w})^\top (X^\top D X)^{-1}
+  (\mathbf{b} - A \mathbf{w}),
+\end{equation}
+estimating the matrix product with a second set of weights; they converge
+off-policy. \emph{Emphatic} TD reweights the updates so that the effective
+weighting satisfies the condition of \cref{lem:p-nonexpansive}. Deep RL
+mostly relies instead on the stabilisers of DQN (target networks, replay
+memories close to on-policy), which weaken the triad without removing it.
+
+\section{Control with function approximation}
+
+For control, $\hat q(s, a; \mathbf{w})$ is learnt with the semi-gradient
+versions of SARSA or Q-learning. Semi-gradient SARSA with linear features
+can oscillate but stays bounded (Gordon, 2001); Q-learning with linear
+features can diverge, being off-policy. In practice, the combination of
+Q-learning with deep networks requires the techniques of the next chapter.
+
+\section{Summary}
+
+\begin{itemize}[nosep]
+  \item Linear approximation represents values as $\mathbf{w}^\top
+    \mathbf{x}(s)$; the error is measured in the norm weighted by the
+    state distribution.
+  \item On-policy, semi-gradient TD converges to the TD fixed point, the
+    solution of the projected Bellman equation, within a factor $1 /
+    \sqrt{1 - \gamma^2}$ of the best approximation; LSTD computes it
+    directly.
+  \item Off-policy, TD can diverge (deadly triad); gradient TD methods
+    converge, and deep RL relies on target networks and replay memories.
+\end{itemize}

@@ -41,6 +41,10 @@ class PacmanEnvironment:
         self.lose_reward = config.lose_reward 
         self.win_reward = config.win_reward
         self.penalty_per_ghost = config.penalty_per_ghost
+        self.ghost_respawn_delay = config.ghost_respawn_delay
+        self.ghost_respawn_min_distance = config.ghost_respawn_min_distance
+        self.ghost_keep_direction = config.ghost_keep_direction
+        self._maze_distances = None # computed when first needed (see maze_distances())
         self.n_steps = 0
         self.cumulated_reward = 0.
         self.points = 0.
@@ -219,6 +223,7 @@ class PacmanEnvironment:
                 # Pacman eats the ghost
                 self.ghosts.remove(ghost)
                 self.dead_ghosts.append(ghost)
+                ghost.eaten_at = self.n_steps
                 reward = self.eat_ghost_reward
             else:
                 # The ghost eats pacman
@@ -321,6 +326,8 @@ class PacmanEnvironment:
     def step(self, action):
         self.n_steps += 1
         reward = 0
+        if self.ghost_respawn_delay > 0:
+            self._respawn_ghosts()
         #assert self.end == False
         # Update ghosts ages
         for ghost in self.ghosts:
@@ -348,6 +355,53 @@ class PacmanEnvironment:
         self.cumulated_reward += reward
         return reward
 
+    def maze_distances(self):
+        '''
+        Shortest-path distances (number of moves) between all the cells of the board,
+        as a dict: distances[a][b]. Computed once (breadth-first search from each cell).
+        '''
+        if self._maze_distances is None:
+            distances = {}
+            for start in self.valid_pos:
+                d = {start: 0}
+                frontier = [start]
+                while frontier:
+                    new_frontier = []
+                    for (i, j) in frontier:
+                        for (_, (di, dj)) in self.actions.values():
+                            n = (i + di, j + dj)
+                            if n in self.map.rooms and n not in d:
+                                d[n] = d[(i, j)] + 1
+                                new_frontier.append(n)
+                    frontier = new_frontier
+                distances[start] = d
+            self._maze_distances = distances
+        return self._maze_distances
+
+    def _respawn_ghosts(self):
+        '''
+        Eaten ghosts come back ghost_respawn_delay moves after being eaten, and not before
+        Pacman's power has ended (so a ghost that comes back is dangerous). A ghost comes back
+        at a random cell at least ghost_respawn_min_distance moves away from Pacman.
+        '''
+        if self.power_credit > 0:
+            return
+        for ghost in list(self.dead_ghosts):
+            if self.n_steps - ghost.eaten_at < self.ghost_respawn_delay:
+                continue
+            distances = self.maze_distances()[self.current_pacman_pos]
+            occupied = {tuple(g.pos) for g in self.ghosts}
+            cells = sorted(c for c, d in distances.items()
+                           if d >= self.ghost_respawn_min_distance and c not in occupied)
+            if not cells: # (very small board)
+                cells = sorted(c for c in distances if c != self.current_pacman_pos and c not in occupied)
+            ghost.pos = cells[np.random.randint(len(cells))]
+            ghost.heading = None
+            ghost.age = self.n_steps - 1 # incremented below like the other ghosts
+            self.dead_ghosts.remove(ghost)
+            self.ghosts.append(ghost)
+            self.ghosts.sort(key=lambda g: g.id)
+
     def clone(self):
         '''
         Fast copy of the environment for simulations (e.g. look-ahead search):
@@ -359,7 +413,7 @@ class PacmanEnvironment:
         env.power_cookies = list(self.power_cookies)
         env.visited_pos = set(self.visited_pos)
         env.ghosts = [copy.copy(ghost) for ghost in self.ghosts]
-        env.dead_ghosts = list(self.dead_ghosts)
+        env.dead_ghosts = [copy.copy(ghost) for ghost in self.dead_ghosts]
         return env
 
     def get_all_actions(self):
