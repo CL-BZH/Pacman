@@ -52,6 +52,14 @@ The reward is only defined up to an additive function of $x$, which
 cancels in \eqref{eq:bt}; this is harmless, since the policy is compared
 on the same prompt.
 
+\begin{intuition}
+  This is the logic of Elo ratings in chess: each answer has a hidden
+  score, and the probability that one is preferred to another depends only
+  on the difference of their scores. Equal scores give $50\%$, a
+  difference of $2$ gives $\sigma(2) \approx 88\%$. Fitting the model finds
+  the scores that best explain which answers won their comparisons.
+\end{intuition}
+
 \section{RL fine-tuning with a KL penalty}
 
 The policy is trained to maximise the learnt reward, regularised by a
@@ -91,6 +99,15 @@ fluency and the diversity of the reference model.
   equal distributions, at $\pi = \pi^\star$.
 \end{proof}
 
+\begin{intuition}
+  The optimal policy keeps the reference model's judgement of what is a
+  plausible answer and tilts it towards rewarded answers: an answer whose
+  reward is higher by $\beta$ becomes $e \approx 2.7$ times more likely. It
+  cannot invent answers that the reference considers impossible ($\pi_{\mathrm
+  {ref}} = 0$ stays $0$). The parameter $\beta$ sets how far the tilt may
+  go, and so how much the learnt reward is trusted.
+\end{intuition}
+
 This is the same computation as soft policy improvement
 (\cref{lem:soft-improvement}), with the reference policy as prior. The
 normalising constant $Z(x)$ is a sum over all possible answers, so
@@ -112,6 +129,14 @@ reward standardised within the group, $A_i = (r_i - \mathrm{mean}(r)) /
 that can be checked automatically (a mathematical answer, a program that
 passes its tests), this RL with verifiable rewards trains models to
 reason at length before answering.
+
+\begin{intuition}
+  GRPO grades each answer against the other attempts at the same question:
+  an answer is reinforced if it did better than its siblings, discouraged
+  if it did worse. The group plays the role of the critic, without a
+  network: ``was this answer better than what I usually produce for this
+  prompt?''
+\end{intuition}
 
 \section{Direct preference optimisation}
 
@@ -151,6 +176,16 @@ it expresses the reward in terms of the optimal policy,
   this form, namely the one of its optimal policy, so no generality is
   lost.
 \end{proof}
+
+\begin{intuition}
+  In DPO the policy \emph{is} the reward model: the reward it implicitly
+  assigns to an answer is how much more likely it makes that answer than
+  the reference model does. Training raises this likelihood ratio for the
+  preferred answer and lowers it for the rejected one. The gradient of
+  \eqref{eq:dpo} is weighted by $\sigma(-\text{margin})$, so the pairs that
+  the policy currently ranks wrongly count most, and those already ranked
+  correctly with a large margin hardly count.
+\end{intuition}
 
 \begin{lstlisting}[caption={DPO loss (PyTorch); \code{logp} are summed token
   log-probabilities of the answers}]

@@ -38,6 +38,15 @@ actions, it can be estimated from states drawn from a replay memory filled
 by an exploratory policy: the deterministic policy gradient is naturally
 off-policy.
 
+\begin{intuition}
+  The actor proposes an action; the critic, being a differentiable
+  function of the action, can say in which direction the action should be
+  nudged to get a higher value ($\nabla_a Q$). The chain rule then tells
+  the actor how to change its parameters to produce the nudged action. The
+  actor learns to climb the critic's landscape, which is why everything
+  depends on the critic's landscape being accurate.
+\end{intuition}
+
 \section{DDPG}
 
 Deep deterministic policy gradient (DDPG, Lillicrap et al., 2016) is
@@ -113,6 +122,16 @@ that maximises the reward \emph{and} its own entropy.
   \end{equation}
 \end{definition}
 
+\begin{intuition}
+  The agent is paid for keeping its options open: at each step it receives,
+  besides the reward, a bonus equal to the entropy of its policy, converted
+  into reward units by the temperature $\alpha$. Among behaviours with the
+  same reward it prefers the most random one, and it becomes deterministic
+  only where determinism pays more than $\alpha$ times the entropy given up.
+  In the soft value, $-\alpha \log \pi(a \mid s)$ is the bonus earned by
+  playing an unlikely action.
+\end{intuition}
+
 The entropy term rewards the policy for keeping several actions possible:
 it explores by construction, it learns several ways of solving a task, and
 it is more robust to perturbations. We prove the two steps of soft policy
@@ -159,6 +178,15 @@ densities).
   {soft}}$ gives $Q^\pi \leq Q^{\pi_{\mathrm{new}}}$.
 \end{proof}
 
+\begin{intuition}
+  The improved policy is a \emph{Boltzmann} distribution over the actions:
+  each is played with a probability proportional to $e^{Q/\alpha}$. The
+  temperature $\alpha$ sets how sharply the better actions are preferred:
+  an action worse by $\alpha$ is played $e \approx 2.7$ times less often;
+  as $\alpha \to 0$ only the best actions remain, and as $\alpha \to
+  \infty$ the choice becomes uniform.
+\end{intuition}
+
 As $\alpha \to 0$, $\pi_{\mathrm{new}}$ concentrates on the greedy actions
 and soft policy iteration becomes policy iteration. In practice:
 \begin{itemize}
@@ -190,6 +218,15 @@ and soft policy iteration becomes policy iteration. In practice:
   with diagonal Jacobian of entries $1 - \tanh^2(u_i) > 0$. By the change of
   variables formula, $\pi(a) = \nu(u) / \prod_i (1 - \tanh^2(u_i))$.
 \end{proof}
+
+\begin{intuition}
+  $\tanh$ squeezes the whole real line into $(-1, 1)$, compressing more and
+  more towards the ends: a large interval of values of $u$ near the tails is
+  mapped to a tiny interval near $\pm 1$, where the probability therefore
+  piles up. The density of $a$ is that of $u$ divided by the local
+  compression factor $1 - \tanh^2(u)$. Forgetting this correction would make
+  the entropy term of SAC wrong precisely at the bounds of the actions.
+\end{intuition}
 
 SAC is sample-efficient, stable across hyperparameters, and one of the
 standard algorithms for continuous control; a discrete-action variant also

@@ -52,6 +52,15 @@ where it has no data and makes more mistakes: the errors compound.
   T^2$.
 \end{proof}
 
+\begin{intuition}
+  A learner who has only watched an expert drive has never seen the car
+  on the shoulder of the road. After a small mistake it is in a situation
+  it never trained on, where it makes more mistakes, and it may never
+  return to familiar ground. A mistake at step $t$ can spoil all the
+  remaining steps, so the cost of a per-step error rate $\varepsilon$ is
+  multiplied by the horizon \emph{twice}.
+\end{intuition}
+
 The bound is tight up to constants: there are problems where a single
 mistake leads to states from which the learner never recovers, and the
 cost is then of order $\varepsilon T^2$, not the $\varepsilon T$ of a
@@ -85,6 +94,14 @@ J(\pi^\star) + u\, T \varepsilon_N + o(1)$, where $\varepsilon_N$ is the
 best training error on the aggregated data and $u$ bounds the increase of
 the expert's cost-to-go after one wrong action: the error grows linearly in
 $T$ when the expert can recover from the learner's mistakes.
+
+\begin{intuition}
+  DAgger is a driving instructor in the passenger seat: the learner
+  drives, and in the situations \emph{it} gets into, including those
+  caused by its own mistakes, the instructor says what it should have
+  done. The training data then cover the states the learner actually
+  visits, and the learner learns how to recover.
+\end{intuition}
 
 \begin{pacman}{Expert iteration is DAgger}{dagger}
   In \cref{ch:model-based}, the expert is the look-ahead search and the
@@ -130,6 +147,14 @@ fitted by maximum likelihood on the demonstrations.
   \E_{p_\theta}[\phi]$. The Hessian of $\log Z$ is the covariance of $\phi$
   under $p_\theta$, positive semi-definite, so $L$ is concave.
 \end{proof}
+
+\begin{intuition}
+  The gradient compares what the expert does with what the current model
+  of the expert does. A feature the expert's trajectories show more often
+  (staying far from the ghosts, say) gets a higher reward weight; a feature
+  the model overproduces gets a lower one. Learning stops when the model's
+  trajectories have the same feature statistics as the expert's.
+\end{intuition}
 
 At the optimum the model matches the expert's feature expectations. The
 expectation under $p_\theta$ requires solving a soft (maximum entropy) RL
@@ -229,6 +254,14 @@ $\beta(a \mid s) > 0$.
 The penalty is large where $\mu$ puts much more weight than the data:
 exactly the actions whose values cannot be trusted.
 
+\begin{intuition}
+  CQL tells the Q-function: ``be pessimistic about what you have not
+  seen''. An action that the policy would choose much more often than the
+  data contain it gets its value pushed down, in proportion to that
+  imbalance; actions well covered by the data are left almost unchanged.
+  The policy then prefers actions whose good value is backed by evidence.
+\end{intuition}
+
 \paragraph{In-sample learning.} IQL (Kostrikov et al., 2022) never
 evaluates $Q$ at actions outside the data. It fits $V(s)$ to an upper
 expectile of $Q(s, a)$ over the actions of the data, minimising
@@ -238,6 +271,14 @@ approximates a maximum over the actions supported by the data; $Q$ is
 fitted to $r + \gamma V(s')$; and the policy is extracted by
 advantage-weighted regression, maximising $\E_{\mathcal{D}}[e^{b (Q(s, a) -
 V(s))} \log \pi(a \mid s)]$: behaviour cloning weighted by the advantage.
+
+\begin{intuition}
+  An upper expectile of $Q(s, a)$ over the actions of the data is a soft
+  version of ``the best action that was actually tried in this state''. IQL
+  thus computes a maximum over the data's actions only, never asking the
+  network about actions it has no data for, and then imitates the data,
+  copying the good actions more than the bad ones.
+\end{intuition}
 
 \begin{remark}{Offline RL and Pacman}{offline-pacman}
   The replay memory of a DQN training run is an offline dataset of

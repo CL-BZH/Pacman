@@ -31,6 +31,14 @@ time exponential in the size of the problem.
   2^{k+2} + 2$. With $k = n$, $0 = T_0 - 2^{n+1} + 2$.
 \end{proof}
 
+\begin{intuition}
+  To reach the reward, the agent must play \emph{right} $n$ times in a row,
+  and a random agent does so with probability $2^{-n}$; any \emph{left}
+  sends it back to the start. Random exploration tries combinations at
+  random, and the number of combinations grows exponentially with the
+  depth at which the reward is hidden.
+\end{intuition}
+
 A greedy agent with optimistic initial values solves the same chain in
 $O(n^2)$ steps: every unvisited action looks attractive, so the agent
 tries the actions of the states it reaches systematically. This is the
@@ -61,6 +69,13 @@ of order $1 / \sqrt{N}$. The bonus is propagated by the Bellman equations,
 so the agent is attracted to states from which under-explored pairs can be
 reached, not only to these pairs themselves.
 
+\begin{intuition}
+  The bonus is the error bar of UCB turned into a reward: the agent treats
+  what it knows little about as if it were good. It is drawn to the
+  unknown until the unknown has become known, and the Bellman equations
+  carry this attraction back along the paths that lead there.
+\end{intuition}
+
 \section{Counts in large state spaces}
 
 With images as states, every state is new, and $N(s) \in \{0, 1\}$. Deep
@@ -82,6 +97,14 @@ $N (\rho' - \rho) = \rho (1 - \rho')$.) With a pixel density model, the
 method made the first real progress on \emph{Montezuma's Revenge}, an
 Atari game where rewards are rare and DQN scored zero.
 
+\begin{intuition}
+  The pseudo-count asks: how much would seeing $s$ once more change the
+  model's belief in $s$? For a state seen thousands of times, one more
+  sighting changes almost nothing; for a state seen once, it changes a lot.
+  The size of the change reveals how familiar the state is, even when no
+  state ever repeats exactly.
+\end{intuition}
+
 \paragraph{Prediction error as novelty.} Random network distillation
 (RND, Burda et al., 2019) trains a network $\hat f_\psi$ to predict the
 output of a fixed, randomly initialised network $f$, on the states visited.
@@ -94,6 +117,14 @@ intrinsic curiosity module (ICM, Pathak et al., 2017) avoids part of the
 problem by predicting in a feature space learnt to predict the agent's own
 actions (an inverse model), which ignores what the agent cannot influence:
 a television showing random images is not interesting to it.
+
+\begin{intuition}
+  RND is a familiarity test: the predictor can only imitate the random
+  network on states similar to those it has been trained on. A large error
+  means ``I have not been here before''. Because the random network is
+  fixed and deterministic, the error goes down once a state is familiar,
+  even if what happens in that state is random.
+\end{intuition}
 
 \begin{lstlisting}[caption={Random network distillation bonus (PyTorch)}]
 target = make_net().requires_grad_(False)   # fixed random network
@@ -127,6 +158,14 @@ Committing to one hypothesis for an episode produces \emph{deep}
 exploration: if the sampled MDP is optimistic about a distant state, the
 agent goes there deliberately, unlike dithering. PSRL has a regret of
 order $\tilde O(H S \sqrt{A T})$ for episodes of length $H$.
+
+\begin{intuition}
+  PSRL behaves like a scientist who picks one plausible hypothesis about
+  the world and tests it for a whole episode, rather than flipping a coin
+  at every step. If the hypothesis says that a distant state is rewarding,
+  the agent goes all the way there and finds out. Over time the hypotheses
+  that keep being refuted lose their posterior probability.
+\end{intuition}
 
 Bootstrapped DQN (Osband et al., 2016) approximates the posterior with an
 ensemble of $K$ Q-heads on a shared torso, each trained on its own

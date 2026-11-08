@@ -63,6 +63,15 @@ the synchronous variant, which is a direct consequence of the contraction.
   and we solve for $\norm{v_{k+1} - v_\pi}_\infty$.
 \end{proof}
 
+\begin{intuition}
+  A small change between two sweeps does not mean that the values are
+  almost right: each sweep only reduces the error by the factor $\gamma$,
+  so the remaining error can be $\gamma / (1 - \gamma)$ times the last
+  change, $99$ times with $\gamma = 0.99$. Slowly changing values may still
+  be far from the answer, and the stopping tolerance must be chosen
+  accordingly.
+\end{intuition}
+
 \section{Policy improvement}
 
 Knowing $v_\pi$, can we find a better policy? The natural candidate is the
@@ -93,6 +102,14 @@ action that is best if $\pi$ is followed afterwards.
   (\T^{\pi'} v_\pi)(s) > v_\pi(s)$.
 \end{proof}
 
+\begin{intuition}
+  The hypothesis compares two plans that differ only in the first move:
+  play $\pi'$ once, then return to $\pi$, versus play $\pi$ throughout. If
+  deviating for one move never hurts, then deviating at every move does not
+  hurt either: each deviation starts from a state where it is at least as
+  good, and the gains add up along the trajectory.
+\end{intuition}
+
 \begin{corollary}{Greedy improvement}{greedy-improvement}
   Let $\pi'$ be greedy with respect to $q_\pi$: $\pi'(s) \in \argmax_a
   q_\pi(s, a)$ for every $s$. Then $v_{\pi'} \geq v_\pi$. If $v_{\pi'} =
@@ -112,6 +129,14 @@ action that is best if $\pi$ is followed afterwards.
   $v_{\pi'}$ is a fixed point of $\T^\star$, hence equals $v_\star$
   (\cref{thm:bellman-opt}).
 \end{proof}
+
+\begin{intuition}
+  To improve a policy it suffices to ask, in every state, ``which action
+  would be best if I followed my current policy afterwards?'', and to play
+  it. If the answer is always the action already played, no one-move
+  deviation helps, and then no deviation of any kind helps: the policy is
+  optimal. Optimality can be checked one move at a time.
+\end{intuition}
 
 \section{Policy iteration}
 
@@ -211,6 +236,16 @@ one sweep of evaluation interleaved with an improvement in every state.
   line. Solving for $\norm{v_\pi - v_\star}_\infty$ gives the result.
 \end{proof}
 
+\begin{intuition}
+  Statement (iii) is what matters in practice: approximate values give
+  good decisions. An error $\delta$ in the values can make the agent choose
+  an action that is worse by about $2 \delta$ (one action overestimated by
+  $\delta$, the best one underestimated by $\delta$), and such losses can
+  occur at every step, hence the factor of the horizon $1 / (1 - \gamma)$.
+  To act well, the values need not be exact; they need to rank the actions
+  correctly.
+\end{intuition}
+
 \paragraph{Asynchronous DP.} Nothing forces the backups to sweep all the
 states in order. \emph{Asynchronous} value iteration updates the states in
 any order, one at a time, using the latest values (as the in-place policy
@@ -246,6 +281,14 @@ another exact method and the basis of several modern algorithms.
   $\mu > 0$, $\sum_s \mu(s) v(s) \geq \sum_s \mu(s) v_\star(s)$ with
   equality only if $v = v_\star$.
 \end{proof}
+
+\begin{intuition}
+  A feasible $v$ is an \emph{optimistic} value: in every state it is at
+  least what any action gives if the future is valued by $v$. Such a
+  function overestimates $v_\star$ everywhere, and the linear program looks
+  for the lowest one: the tightest ``roof'' over the one-step values of all
+  the actions, which touches them exactly at $v_\star$.
+\end{intuition}
 
 The program has $\abs{\States}$ variables and $\abs{\States}
 \abs{\Actions}$ constraints. Its dual has one variable $x(s, a) \geq 0$ per

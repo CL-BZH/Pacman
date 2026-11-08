@@ -83,6 +83,16 @@ ingredients make such feedback loops much weaker.
   the Huber loss.
 \end{definition}
 
+\begin{intuition}
+  The target $y_i$ is the network's own, slightly better informed, opinion:
+  one real reward plus the best value that the (frozen) target network sees
+  at the next state, or nothing more if the game ended ($d_i = 1$). DQN thus
+  turns RL into a sequence of supervised regression problems in which the
+  network learns to predict a one-step-improved version of itself.
+  Without the frozen copy it would be chasing its own tail; the target
+  network holds the tail still for a while.
+\end{intuition}
+
 \paragraph{Why a replay memory.} Consecutive transitions of a game are
 strongly correlated: a mini-batch made of them describes one situation and
 pushes the network towards it, then the next situation pushes it
@@ -168,6 +178,15 @@ common trunk, and combines them as
   is immediate.
 \end{proof}
 
+\begin{intuition}
+  $Q(s, a)$ = ``how good is the situation'' + ``how much better is this
+  action than the average action here''. The first term is shared by all
+  the actions and learnt from every visit of the state; the second only
+  needs to capture differences between actions, often small. Subtracting
+  the mean fixes how $Q$ is split between the two heads, which could
+  otherwise drift in opposite directions.
+\end{intuition}
+
 Every transition updates $V(s)$, whatever the action played, so the value
 of a state is learnt from all the actions taken in it.
 
@@ -252,6 +271,16 @@ unbiased: $\E_{i \sim P}[w_i g_i] = \sum_i P(i) \frac{1}{N P(i)} g_i =
 during training. In Pacman, deaths are rare and their TD errors large:
 prioritisation would replay them far more often than uniform sampling.
 
+\begin{intuition}
+  Prioritised replay is studying the exam questions one got wrong more
+  often than those one already knows. Done naively, this distorts the
+  answer: the rare, surprising transitions would weigh as much in the
+  learnt values as if they were frequent. The weights $w_i$ undo the
+  distortion: a transition replayed $k$ times more often counts $k$ times
+  less each time, so the transitions are revisited more often without
+  being over-represented in the result.
+\end{intuition}
+
 \subsection{Distributional reinforcement learning}
 
 Instead of the expected return $q(s, a)$, distributional RL learns the
@@ -292,6 +321,15 @@ parametrisations are common.
   \mathbb{1}[Z < \theta]] = -\tau (1 - F(\theta)) + (1 - \tau) F(\theta) =
   F(\theta) - \tau$, which vanishes at $F(\theta) = \tau$.
 \end{proof}
+
+\begin{intuition}
+  The loss $\rho_\tau$ charges $\tau$ per unit when the sample is above
+  $\theta$ and $1 - \tau$ when it is below. Moving $\theta$ up gains $\tau$
+  on the samples above and loses $1 - \tau$ on those below; the balance is
+  reached when a fraction $\tau$ of the samples lies below $\theta$, which
+  defines the $\tau$-quantile. With $\tau = 1/2$ the loss is the absolute
+  error, minimised by the median.
+\end{intuition}
 
 The action values are recovered as means of the distributions, and the
 agent still acts greedily with respect to them. Why does learning the

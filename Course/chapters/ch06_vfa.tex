@@ -32,6 +32,15 @@ over states, usually the frequency with which the policy visits them.
   \mathbf{w} - u}_D$, i.e.\ $\Pi = X (X^\top D X)^{-1} X^\top D$.
 \end{definition}
 
+\begin{intuition}
+  With far fewer parameters than states, the approximation cannot be right
+  everywhere, so we must say where errors matter: the weights $d(s)$ make
+  the frequently visited states count most. The features are all that the
+  approximation ``sees'' of a state: two states with the same features get
+  the same value. $\Pi u$ is the best that can be done for $u$ with these
+  features, the closest point to $u$ in the space they span.
+\end{intuition}
+
 A table is the special case of one-hot features ($m = \abs{\States}$, $X =
 I$). Classical feature constructions include polynomials, Fourier bases,
 radial basis functions and \emph{tile coding} (several overlapping grids,
@@ -58,6 +67,16 @@ treating it as a constant:
   \delta_t = R_{t+1} + \gamma\, \mathbf{w}^\top \mathbf{x}(S_{t+1}) -
   \mathbf{w}^\top \mathbf{x}(S_t).
 \end{equation}
+
+\begin{intuition}
+  The update moves the prediction for $S_t$ towards the target, through the
+  features of $S_t$. It is only a ``semi''-gradient because the target also
+  depends on $\mathbf{w}$ (through $S_{t+1}$), and that dependence is
+  ignored: we move the prediction towards the target, never the target
+  towards the prediction. A full gradient would also change the value of
+  $S_{t+1}$ to make it agree with $S_t$, letting the future be distorted to
+  fit the past, which is not what we want.
+\end{intuition}
 
 \begin{proposition}{Expected TD update}{td-expected}
   Let $P_\pi$ and $r_\pi$ be as in \cref{prop:matrix}. If $S_t \sim d$ and
@@ -138,6 +157,14 @@ generally \emph{not} the minimiser of $\overline{\mathrm{VE}}$.
   \norm{A}^2$.
 \end{proof}
 
+\begin{intuition}
+  Positive definiteness of $A$ means that, on average, the update always
+  points towards the TD fixed point, like a ball rolling into a bowl. It
+  depends on the states being weighted as the policy visits them: then a
+  state whose value is overestimated is also visited as a \emph{next}
+  state often enough for the overestimate to be corrected.
+\end{intuition}
+
 The stochastic algorithm \eqref{eq:linear-td}, with decreasing step sizes,
 converges to $\mathbf{w}_{\mathrm{TD}}$ with probability $1$ (Tsitsiklis and
 Van Roy, 1997). How good is the fixed point?
@@ -173,6 +200,17 @@ Van Roy, 1997). How good is the fixed point?
   \end{align*}
   and we solve for $\norm{v_\pi - v_{\mathrm{TD}}}_D^2$.
 \end{proof}
+
+\begin{intuition}
+  TD never sees $v_\pi$: it only sees its own predictions one step ahead.
+  Looking one step ahead ($\T^\pi$) produces a function that the features
+  may not represent, so it is projected back ($\Pi$); the TD solution is the
+  function that this look-then-project operation leaves unchanged. It is
+  generally not the best fit $\Pi v_\pi$, because the approximation errors
+  of the next states feed into the targets. The bound says that this
+  compounding costs at most a factor $1 / \sqrt{1 - \gamma^2}$ ($7$ for
+  $\gamma = 0.99$), and often much less.
+\end{intuition}
 
 \begin{pacman}{Linear features for the reduced game}{vfa-escape}
   We approximate the value $v_\star$ of the optimal policy of the reduced
@@ -230,6 +268,15 @@ than needed, uniform off-policy updates, and the weights diverge for every
 positive step size, although an exact representation exists. This is the
 \emph{deadly triad} of function approximation, bootstrapping and
 off-policy learning.
+
+\begin{intuition}
+  In the off-policy case, some states are updated often while the states
+  their targets depend on are rarely updated. Through the shared weights,
+  raising the value of the first states also raises the value of the
+  second, which raises the targets of the first: the updates chase a target
+  that they push away. On-policy, every state that serves as a target is
+  also updated in proportion, and this feedback is kept in check.
+\end{intuition}
 
 Two families of remedies exist. \emph{Gradient TD} methods (GTD2, TDC,
 Sutton et al., 2009) perform true stochastic gradient descent on the

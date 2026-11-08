@@ -25,7 +25,8 @@ results quoted were obtained with it.
 | 15. RL from human feedback | Bradley–Terry reward models, KL-regularised PPO, GRPO, DPO (with derivation), RLAIF |
 
 Proofs are given in full. Boxes are colour-coded: blue = definitions, red = theorems, amber =
-propositions, green = Pacman examples, grey = remarks, violet = algorithms.
+propositions, green = Pacman examples, grey = remarks, violet = algorithms. Teal "In words"
+boxes explain the intuition behind the main formulas.
 
 ## Files
 

@@ -102,6 +102,18 @@ Pacman: a game is aborted after at most $1000$ moves.
   q_{\pi_\theta}(S_t, A_t)$. The tower property gives the second equality.
 \end{proof}
 
+\begin{intuition}
+  The gradient is ``try, then reinforce''. $\nabla_\theta \log
+  \pi_\theta(A_t \mid S_t)$ is the direction in parameter space that makes
+  the action actually taken more likely; each such direction is weighted by
+  how well things went afterwards. Good outcomes make their actions more
+  likely, bad ones less likely. The logarithm divides by the probability of
+  the action, so that actions are not favoured merely because they are
+  often sampled. Two things are remarkable: the dynamics do not appear (the
+  agent needs to know how an action turned out, not why), and an action is
+  judged only by what happened \emph{after} it (step 2).
+\end{intuition}
+
 \begin{remark}{The factor $\gamma^t$}{gamma-t}
   The factor $\gamma^t$ in \eqref{eq:pg} gives little weight to the late
   steps of an episode. Practical implementations, including the
@@ -144,6 +156,16 @@ advantage of an action is often much smaller than its value: in Pacman, the
 value of a state may be $100$, while the difference between going east and
 going west is a few points.
 
+\begin{intuition}
+  Without a baseline, an action is judged by its absolute outcome: if all
+  the returns are positive, every action taken is reinforced, and only the
+  differences in the amount of reinforcement carry information, hidden in
+  a lot of noise. With the value as baseline, an action is judged
+  \emph{relative to what was expected} in that state: better than usual,
+  reinforce; worse, discourage. The expected gradient is the same, but the
+  signal no longer has to be extracted from the noise of large returns.
+\end{intuition}
+
 \section{Actor-critic methods}
 
 The advantage is unknown; an \emph{actor-critic} method learns a value
@@ -160,6 +182,14 @@ policy (the \emph{actor}), and uses it to estimate the advantages.
   By \eqref{eq:q-from-v}, $\E_\pi[R_{t+1} + \gamma v_\pi(S_{t+1}) \mid S_t
   = s, A_t = a] = q_\pi(s, a)$; subtract $v_\pi(s)$.
 \end{proof}
+
+\begin{intuition}
+  The critic grades the actor. Before the move it predicted $v_\pi(S_t)$;
+  after one step it can say $R_{t+1} + \gamma v_\pi(S_{t+1})$. If the move
+  led somewhere better than predicted, the TD error is positive and the
+  move was better than average. One step of experience is enough for a
+  grade, at the cost of relying on the critic's judgement of $S_{t+1}$.
+\end{intuition}
 
 With the critic $V_w$ instead of $v_\pi$, $\delta_t$ is a biased but
 low-variance estimate of the advantage. Monte Carlo advantages $G_t -
@@ -216,6 +246,16 @@ advantage estimator interpolates between the two.
   $\lambda = 1$ is (ii)). All sums are finite, which justifies the
   exchange.
 \end{proof}
+
+\begin{intuition}
+  The advantage of an action is estimated by the surprises that follow it,
+  the later ones counting less. The factor $\gamma \lambda$ says for how
+  long an action is held responsible for what happens next: with $\lambda =
+  0$, only for the next surprise (and the critic is trusted for the rest);
+  with $\lambda = 1$, for everything until the end of the game. With
+  $\gamma \lambda = 0.99 \times 0.95 \approx 0.94$, an action is held
+  responsible for about the next $17$ moves.
+\end{intuition}
 
 The parameter $\lambda$ trades bias (small $\lambda$, which relies on the
 critic) against variance (large $\lambda$, which relies on the sampled
@@ -331,6 +371,16 @@ policy itself, with the KL divergence.
   $u$ colinear with $F^{-1/2} g$ and of norm $\sqrt{2 \delta}$, i.e.\
   $\Delta = F^{-1/2} u \propto F^{-1} g$, with the stated scaling.
 \end{proof}
+
+\begin{intuition}
+  The Fisher matrix measures how sensitive the policy is to each direction
+  of change of the parameters. The natural gradient takes large steps in the
+  directions that barely change the behaviour and small steps in the
+  sensitive ones: every step changes the \emph{policy} by the same amount,
+  whatever the parametrisation. It is like walking a fixed distance on the
+  ground rather than a fixed number of millimetres on a map whose scale
+  varies from place to place.
+\end{intuition}
 
 The \emph{natural policy gradient} (Kakade, 2001) follows $F^{-1} \nabla
 J$. It is invariant to reparametrisations of the policy, and the size of

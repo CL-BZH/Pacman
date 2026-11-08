@@ -75,6 +75,17 @@ effect of model errors on values.
   v}_\infty$; solve.
 \end{proof}
 
+\begin{intuition}
+  A model that is wrong about the rewards by $\varepsilon_r$ makes that
+  error at every simulated step, hence $\varepsilon_r / (1 - \gamma)$ over
+  the horizon. A model that is wrong about the transitions is worse: at
+  each step it sends the simulation to slightly wrong states, and landing
+  in the wrong place can cost as much as the whole range of values,
+  $R_{\max} / (1 - \gamma)$; this too happens at every step, hence the
+  square. Imagined trajectories drift away from reality the longer they
+  run.
+\end{intuition}
+
 The factor $1 / (1 - \gamma)^2$ reflects the compounding of errors over
 long simulated trajectories. Modern methods therefore keep the simulated
 trajectories short: MBPO (Janner et al., 2019) branches rollouts of a few
@@ -170,6 +181,14 @@ less noisy than each of them.
   game, only when it clearly walks into a trap.
 \end{pacman}
 
+\begin{intuition}
+  The safety mode does not ask the search which move is best, a question
+  its $20$ noisy simulations per move cannot answer reliably. It asks a
+  simpler one: is the move the agent wants to play clearly more dangerous
+  than another? The trained policy keeps the initiative, and the search
+  acts as a safety net that vetoes a move only when the evidence is strong.
+\end{intuition}
+
 \begin{lstlisting}[caption={Choosing the move (\code{pacman\_search.py},
   \code{LookaheadSearch.select\_action}, excerpt)}]
 scores = {m: np.mean([s["score"] for s in sims if s["move"] == m])
@@ -225,6 +244,14 @@ Pacman, the tree is built over sequences of the agent's moves
 (``open-loop'' MCTS), each simulation replaying the sequence on a fresh
 copy of the game, or the tree also branches on chance outcomes.
 
+\begin{intuition}
+  MCTS places a bandit at every node of the tree. Moves that look good are
+  simulated more and their subtrees grow deeper; moves that look bad are
+  revisited only now and then, in case their first results were unlucky.
+  The tree grows towards the promising lines, as a chess player analyses
+  the critical variations deeply and dismisses the others after a glance.
+\end{intuition}
+
 \subsection{AlphaZero}
 
 AlphaZero (Silver et al., 2018) learnt chess, shogi and Go from the rules
@@ -247,6 +274,16 @@ The search is a \emph{policy improvement operator}: its visit distribution
 is better than the prior it started from, and training the network on it
 is \emph{expert iteration} (Anthony et al., 2017). The network then makes
 the next searches better, and so on.
+
+\begin{intuition}
+  In PUCT the prior $p_a(s)$ plays the role of intuition: the moves the
+  network likes are explored first, and the bonus, decreasing like $1 /
+  (1 + N(s, a))$, lets the search's own statistics take over as they
+  accumulate. In the loss, the value head learns to predict who wins, and
+  the policy head learns to imitate the search, which plays better than
+  the raw network because it looks ahead. The program pulls itself up: a
+  better network makes a better search, which makes a better teacher.
+\end{intuition}
 
 \subsection{MuZero}
 
@@ -301,6 +338,15 @@ observes (positions, power) and the rules for Pacman himself.
   the $m$ cells out of $n$. The moves are independent given $p$, and the
   posterior is the prior density $\propto p(1 - p)$ times the likelihood.
 \end{proof}
+
+\begin{intuition}
+  A move towards Pacman is evidence that the ghost chases, but weak
+  evidence when most of the ghost's possible moves go towards Pacman anyway
+  ($q_i$ close to $1$): a random ghost would have done the same. A move
+  away from Pacman is strong evidence of randomness, since a chasing ghost
+  never makes it. The posterior weighs each observation by how much it
+  discriminates between the two behaviours.
+\end{intuition}
 
 The repository takes the maximum of this posterior on a grid. Over many
 games, it recovers $p \approx 0.73$ and $0.64$ for the two ghosts (their

@@ -58,6 +58,15 @@ episodes played with $\pi$.
   $V_n = (1 - \alpha) V_{n-1} + \alpha G_n$ and unroll the recursion.
 \end{proof}
 
+\begin{intuition}
+  The update reads: move the estimate a fraction of the way towards the
+  new sample. With $1/n$ the estimate is the plain average, which never
+  forgets. With a constant $\alpha$ it is an exponential moving average,
+  which remembers roughly the last $1/\alpha$ samples. In RL the targets
+  change as the policy improves, so forgetting old samples is usually what
+  we want.
+\end{intuition}
+
 Each first-visit return is an independent sample of $G_t$ given $S_t = s$
 (episodes are independent), with mean $v_\pi(s)$ and finite variance; by
 the strong law of large numbers, $V(s) \to v_\pi(s)$ almost surely for every
@@ -85,6 +94,17 @@ target} $R_{t+1} + \gamma V(S_{t+1})$, available after a single step.
   episode was truncated (\cref{rem:truncation}), $S_{t+1}$ is not terminal
   and its estimate is used.
 \end{definition}
+
+\begin{intuition}
+  $V(S_t)$ was a prediction of the future made at time $t$; one step later,
+  $R_{t+1} + \gamma V(S_{t+1})$ is a better prediction, since one real
+  reward is now known. The TD error $\delta_t$ is the \emph{surprise}
+  between the two: positive if things turned out better than expected,
+  negative otherwise. TD learning corrects each prediction towards the next
+  one, as a forecaster corrects Thursday's forecast for Sunday using
+  Friday's, without waiting for Sunday. It learns a guess from a guess,
+  hence the name \emph{bootstrapping}.
+\end{intuition}
 
 The TD target is \emph{biased} (it uses the current estimate $V$ instead of
 $v_\pi$) but has a much smaller variance than the return: it involves one
@@ -128,6 +148,14 @@ convergence is a result of \emph{stochastic approximation}.
   probability $1$.
 \end{theorem}
 
+\begin{intuition}
+  The steps must be large enough in total to carry the estimates from any
+  starting point to the solution ($\sum \alpha_n = \infty$), and shrink
+  fast enough for the noise of the samples to average out ($\sum \alpha_n^2
+  < \infty$). The step $\alpha_n = 1/n$, which computes plain averages,
+  satisfies both; a constant step satisfies only the first.
+\end{intuition}
+
 The proof (Dayan, 1992; Jaakkola, Jordan and Singh, 1994; Tsitsiklis, 1994)
 combines \cref{prop:td-contraction} with martingale arguments that control
 the noise of the samples: the first condition of \eqref{eq:robbins-monro}
@@ -165,6 +193,13 @@ the episode, or only the first one followed by an estimate. Between them,
   v_\pi}_\infty$.
 \end{proof}
 
+\begin{intuition}
+  An $n$-step return contains $n$ real rewards and only then a guess, which
+  is discounted by $\gamma^n$: the more reality in the target, the less the
+  error of the guess matters. The price is noise, since each real reward is
+  random.
+\end{intuition}
+
 The larger $n$, the less the target depends on the (possibly wrong)
 estimate $V$, but the more random rewards it contains: $n$ trades bias for
 variance. The \emph{$\lambda$-return} averages all the $n$-step returns
@@ -200,6 +235,14 @@ meet it again as the generalised advantage estimator of \cref{ch:pg}.
   for $\lambda < 1$ (the sums are finite); for $\lambda = 1$ the identity is
   the telescoping of the Monte Carlo return.
 \end{proof}
+
+\begin{intuition}
+  The correction that the $\lambda$-return applies to $V(S_t)$ is the sum
+  of all the future surprises, those further ahead counting less. The
+  parameter $\lambda$ says how much the agent trusts its own estimates:
+  with $\lambda = 0$ it trusts them fully and looks at the next surprise
+  only; with $\lambda = 1$ it trusts none and waits for the whole return.
+\end{intuition}
 
 \subsection{Eligibility traces}
 
@@ -241,6 +284,14 @@ track of these weights.
   \end{equation*}
   by \cref{lem:lambda-td}, $V$ being fixed during the episode.
 \end{proof}
+
+\begin{intuition}
+  The trace of a state measures how much it is ``to blame'' for the
+  current surprise: it jumps when the state is visited and fades with
+  every step. When a surprise occurs, all the recently visited states share
+  the correction in proportion to their trace. Recent and frequent states
+  get more credit, a simple answer to the \emph{credit assignment} problem.
+\end{intuition}
 
 With online updates the equivalence is only approximate; the \emph{true
 online} TD($\lambda$) of van Seijen and Sutton (2014) makes it exact. Traces
@@ -317,6 +368,16 @@ $q_\star$ (same proof as \cref{lem:contraction}, using
 the policy that generates the data}, provided it explores: it is
 \emph{off-policy}. This property is what allows DQN to learn from a replay
 memory of old transitions (\cref{ch:dqn}).
+
+\begin{intuition}
+  SARSA learns how good its actual behaviour is, exploration mistakes
+  included: near a ghost, where a random move can be fatal, its values are
+  lower, and it learns to keep a safety margin. Q-learning learns how good
+  its behaviour \emph{would} be if from the next step on it always played
+  its best action: it values states as a perfect player would, even while
+  it is still exploring. One learns about the agent it is, the other about
+  the agent it is trying to become.
+\end{intuition}
 
 \paragraph{Expected SARSA.} Replacing the sampled next action of SARSA by
 its expectation under the policy gives
@@ -408,6 +469,15 @@ of the wrong expectation. Importance sampling corrects it.
   positive probability under $\pi$.
 \end{proof}
 
+\begin{intuition}
+  Each observed trajectory is reweighted by how much more (or less) likely
+  the target policy would have been to produce it than the behaviour
+  policy. Trajectories that $\pi$ would often take count more, those it
+  would rarely take count less, and the average becomes that of $\pi$. The
+  weight is a product of one ratio per step, so over long episodes it is
+  either tiny or huge: the source of the variance.
+\end{intuition}
+
 Averaging $\rho_{t:T-1} G_t$ over the visits of $s$ (\emph{ordinary}
 importance sampling) is unbiased, but the products of ratios can be huge,
 and the variance even infinite. \emph{Weighted} importance sampling divides
@@ -433,6 +503,15 @@ biased upwards.
   take the maximum over $j$. (The function $x \mapsto \max_i x_i$ is
   convex, and the inequality is an instance of Jensen's inequality.)
 \end{proof}
+
+\begin{intuition}
+  This is the ``winner's curse'': among many noisy estimates, the largest
+  one is likely to be one that got lucky. Choosing an action because its
+  estimate is the highest and then believing that estimate is
+  over-optimistic. Double Q-learning separates the two roles: one estimate
+  chooses, the other, with independent errors, evaluates, so the luck that
+  made the choice does not inflate the value.
+\end{intuition}
 
 If the estimates $Q(s', a')$ are unbiased but noisy, $\max_{a'} Q(s', a')$
 overestimates $\max_{a'} q(s', a')$, and Q-learning propagates the

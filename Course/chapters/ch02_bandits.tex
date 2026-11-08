@@ -28,6 +28,17 @@ the UCB rule (\cref{ch:model-based}).
   \end{equation}
 \end{definition}
 
+\begin{intuition}
+  $T \mu^\star$ is what an oracle who knew the best arm from the start
+  would collect on average in $T$ rounds; $\E[\sum_t R_t]$ is what the
+  agent collects. The regret is the price of not knowing which arm is best.
+  It compares with the best arm's \emph{mean}, not with the luckiest
+  rewards, so it measures bad decisions, not bad luck. If $\mathcal{R}_T$
+  grows linearly in $T$, the agent keeps losing a fixed amount per round:
+  it never learns. If it grows sublinearly, the loss per round
+  $\mathcal{R}_T / T$ tends to $0$: the agent ends up playing the best arm.
+\end{intuition}
+
 \begin{proposition}{Regret decomposition}{regret-decomp}
   $\mathcal{R}_T = \sum_{a=1}^{K} \Delta_a\, \E\left[N_a(T)\right]$.
 \end{proposition}
@@ -38,6 +49,12 @@ the UCB rule (\cref{ch:model-based}).
   T$, $T \mu^\star - \sum_a \mu_a N_a(T) = \sum_a (\mu^\star - \mu_a)
   N_a(T)$; take expectations.
 \end{proof}
+
+\begin{intuition}
+  The regret is a bill: each play of arm $a$ costs $\Delta_a$ on average,
+  and the bill is the number of plays of each arm times its price. Playing
+  an almost-optimal arm costs little; playing a bad arm costs a lot.
+\end{intuition}
 
 A good algorithm therefore plays each suboptimal arm rarely, and the more
 rarely the larger its gap. The estimate of an arm after $n$ plays is the
@@ -86,6 +103,15 @@ concentration inequality.
   \end{equation}
 \end{lemma}
 
+\begin{intuition}
+  A sample mean rarely strays far from the true mean, and the probability
+  of a deviation $c$ falls exponentially in $n c^2$. Turned around: with
+  probability at least $1 - \delta$, $\abs{\bar X_n - \mu} \leq
+  \sqrt{\ln(2/\delta) / (2n)}$. Deviations of order $1/\sqrt{n}$ are
+  typical: four times more data halve the uncertainty. The lemma gives an
+  error bar around each estimate.
+\end{intuition}
+
 \begin{definition}{UCB1}{ucb1}
   For rewards in $[0, 1]$, UCB1 (Auer, Cesa-Bianchi and Fischer, 2002)
   plays each arm once, then at round $t$ the arm maximising
@@ -98,6 +124,17 @@ concentration inequality.
 The bonus is large for arms played rarely, and decreases as their estimate
 becomes reliable; the slow growth of $\ln t$ ensures that every arm is
 eventually retried.
+
+\begin{intuition}
+  The index of an arm is the most optimistic mean that is still plausible
+  given its data: the estimate plus its error bar. The width of the bar
+  comes from Hoeffding's inequality: choosing $c$ so that $e^{-2 n c^2} =
+  t^{-4}$ gives $c = \sqrt{2 \ln t / n}$, so the true mean exceeds the
+  index only with a tiny probability. The rule corrects itself. An arm with
+  a large index is either good, and playing it is right, or poorly known,
+  and playing it shrinks its error bar until the arm is seen for what it
+  is. Exploration stops by itself where it is no longer needed.
+\end{intuition}
 
 \begin{theorem}{Regret of UCB1}{ucb-regret}
   For rewards in $[0, 1]$ and every suboptimal arm $a$ ($\Delta_a > 0$),
@@ -145,6 +182,16 @@ eventually retried.
   \cref{prop:regret-decomp}.
 \end{proof}
 
+\begin{intuition}
+  To tell apart two means separated by $\Delta_a$, the error bars must be
+  narrower than $\Delta_a$, which takes about $1 / \Delta_a^2$ samples
+  since they shrink like $1 / \sqrt{n}$. The factor $\ln T$ is the price of
+  confidence: to be wrong with probability about $1/T$ only, the bars must
+  be widened by $\sqrt{\ln T}$. Close arms are played often but each play
+  costs little; the regret of arm $a$ is $\ln T / \Delta_a$, large only when
+  the gap is small, and it never exceeds the trivial bound $\Delta_a T$.
+\end{intuition}
+
 The regret of UCB1 grows like $\ln T$, and this is optimal up to the
 constant:
 
@@ -158,12 +205,29 @@ constant:
   where KL is the Kullback--Leibler divergence (Lai and Robbins, 1985).
 \end{theorem}
 
+\begin{intuition}
+  $\mathrm{KL}(\nu_a \,\|\, \nu_\star)$ measures how much evidence one
+  reward of arm $a$ brings that $a$ is not the best arm. Any algorithm that
+  does well on every bandit must gather about $\ln T$ units of this
+  evidence against each suboptimal arm, hence play it about $\ln T /
+  \mathrm{KL}$ times. Arms whose rewards look alike are hard to rule out.
+\end{intuition}
+
 \section{Thompson sampling}
 
 Thompson sampling (1933) is Bayesian: maintain a posterior distribution
 over the mean of each arm, sample one value from each posterior, and play
 the arm whose sample is largest. Each arm is played with the posterior
 probability that it is the best.
+
+\begin{intuition}
+  An arm that is well known has a narrow posterior, and its sample is close
+  to its estimate. An arm that is poorly known has a wide posterior, and
+  now and then its sample is large, so it gets tried. An arm that is
+  surely worse almost never wins the draw. The randomness of the samples
+  plays the role of the error bars of UCB, and it is calibrated by the
+  data instead of by a worst-case formula.
+\end{intuition}
 
 \begin{algobox}{Thompson sampling for Bernoulli rewards}
   \begin{algorithmic}[1]
@@ -229,6 +293,14 @@ receiving $R_t$, the \emph{gradient bandit} algorithm updates
 where $\bar R_t$ is a \emph{baseline}, for example the average of the past
 rewards.
 
+\begin{intuition}
+  If the reward is better than usual ($R_t > \bar R_t$), the played arm
+  becomes more likely and the others less likely, each in proportion to its
+  probability; if it is worse, the opposite. The baseline turns ``was this
+  reward good?'' into ``was it better than expected?''. Without it, every
+  positive reward would push up whatever arm was played.
+\end{intuition}
+
 \begin{proposition}{The gradient bandit is stochastic gradient ascent}%
   {grad-bandit}
   Let $J(H) = \sum_a \pi(a) \mu_a$ be the expected reward. For any
@@ -270,6 +342,14 @@ $M_a = \lambda I + \sum_{t : A_t = a} x_t x_t^\top$, and plays
 the bonus measuring the uncertainty of the estimate in the direction of the
 context. Contextual bandits are the standard model of recommendation and
 online advertising.
+
+\begin{intuition}
+  $\sqrt{x^\top M_a^{-1} x}$ is, up to the noise level, the standard
+  deviation of the predicted reward $\hat\theta_a^\top x$. It is small for
+  contexts similar to those already seen with arm $a$ (directions where
+  $M_a$ is large), and large for new kinds of contexts. It is the error bar
+  of UCB, for a linear model.
+\end{intuition}
 
 \section{Summary}
 

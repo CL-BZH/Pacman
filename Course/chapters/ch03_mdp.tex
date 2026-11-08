@@ -40,6 +40,15 @@ actions are finite, and that the rewards are bounded.
   depends on the past only through the current state and action.
 \end{definition}
 
+\begin{intuition}
+  The state is a summary of the past that is enough to predict the future,
+  like a chess position: how the pieces got there does not matter for what
+  can happen next. The Markov property is a property of the \emph{choice} of
+  state as much as of the system: a process that is not Markov in some
+  variables becomes Markov when the state includes enough of the history
+  (the direction of the ghosts in game \code{v2}, \cref{rem:pomdp}).
+\end{intuition}
+
 Two quantities derived from $p$ are used constantly: the \emph{transition
 probabilities} and the \emph{expected rewards}
 \begin{equation}
@@ -122,6 +131,17 @@ handled by the same equations.
   = R_{t+1} + \gamma \sum_{j \geq 0} \gamma^j R_{t+1+j+1}
   = R_{t+1} + \gamma\, G_{t+1}$.
 \end{proof}
+
+\begin{intuition}
+  The return is the total reward from now on, where a reward $k$ steps
+  ahead counts only $\gamma^k$ of its value. A useful reading: if at each
+  step the game could stop for an outside reason with probability $1 -
+  \gamma$, the expected total of the rewards actually collected would be
+  exactly $\E[G_t]$; discounting is uncertainty about the future, or
+  impatience. Property (ii) is the seed of everything that follows: the
+  future seen from now is the next reward plus the (discounted) future seen
+  from the next step.
+\end{intuition}
 
 The discount factor has two roles. Mathematically it makes the returns
 finite; practically it sets a \emph{horizon}: a reward $k$ steps ahead
@@ -206,6 +226,14 @@ follow $\pi$?''.
   $\E_\pi[G_{t+1} \mid S_{t+1} = s'] = v_\pi(s')$.
 \end{proof}
 
+\begin{intuition}
+  The value of a state is the average of the values of its actions,
+  weighted by how often the policy chooses them. The value of an action is
+  one step of reality (the reward and the next state, drawn by the
+  environment) followed by the value of wherever the agent lands. $v$
+  averages over the agent's choices, $q$ over the environment's.
+\end{intuition}
+
 \section{The Bellman expectation equations}
 
 Substituting \eqref{eq:q-from-v} into \eqref{eq:v-from-q}, and conversely,
@@ -226,6 +254,16 @@ gives equations that involve one value function only.
   Moreover $v_\pi$ is the \emph{unique} solution of \eqref{eq:bellman-v}
   and $q_\pi$ the unique solution of \eqref{eq:bellman-q}.
 \end{theorem}
+
+\begin{intuition}
+  The Bellman equation is a consistency condition, not a recipe: the value
+  of a state must equal what one expects to get in one step plus the
+  discounted value of where one lands. It links the value of each state to
+  the values of its neighbours, so that a reward at the end of a game is
+  ``felt'' backwards, step by step, in all the states that lead to it.
+  The equations form a linear system with one unknown per state, and
+  \cref{prop:matrix} solves it.
+\end{intuition}
 
 The existence part is \cref{prop:v-q}. For uniqueness, and for everything
 that follows, it pays to write the equations with operators.
@@ -283,6 +321,18 @@ $v_\pi$ is a fixed point of $\T^\pi$.
   $\T^\pi$.
 \end{proof}
 
+\begin{intuition}
+  Applying $\T^\pi$ to a guess $v$ means: look one step ahead with the true
+  rewards and dynamics, and use the guess only for the states one step
+  later. Whatever error the guess had, it now enters only through the next
+  states, discounted by $\gamma$: each application pushes the error one
+  step into the future, where it counts less. Monotonicity says that a
+  better guess for the future gives a better estimate now. The inequality
+  \eqref{eq:max-ineq} says that taking the best action cannot amplify
+  errors: if every option is known to within $\delta$, the best option is
+  also known to within $\delta$.
+\end{intuition}
+
 \begin{proof}[Proof of uniqueness in \cref{thm:bellman-exp}]
   If $v = \T^\pi v$ and $w = \T^\pi w$, then
   \begin{equation*}
@@ -314,6 +364,15 @@ $v_\pi$ is a fixed point of $\T^\pi$.
   P_\pi)^{n+1} \to I$. The term $\gamma^k P_\pi^k r_\pi$ is the expected
   discounted reward collected $k$ steps ahead.
 \end{proof}
+
+\begin{intuition}
+  $P_\pi^k(s, s')$ is the probability of being in $s'$ after $k$ steps from
+  $s$, so $P_\pi^k r_\pi$ is the reward expected at step $k$. The value is
+  the sum of the rewards expected at each future step, discounted: the
+  series $\sum_k \gamma^k P_\pi^k r_\pi$ is the definition of the value,
+  and $(I - \gamma P_\pi)^{-1}$ is its closed form, the matrix analogue of
+  $1 + x + x^2 + \cdots = 1/(1 - x)$.
+\end{intuition}
 
 \section{Optimal policies}
 
@@ -382,6 +441,18 @@ equation shows that it does.
   v_\star$ is the first identity of \eqref{eq:bellman-q-opt}; substituting
   it into the definition of $q_\star$ gives the second.
 \end{proof}
+
+\begin{intuition}
+  This is Bellman's \emph{principle of optimality}: whatever the first
+  move, an optimal plan must continue optimally from wherever it lands, so
+  the value of playing well is the best, over the first move, of the reward
+  plus the value of playing well afterwards. $q_\star(s, a)$ answers the
+  question ``what if I play $a$ now and play perfectly afterwards?'', and
+  the best action is the one with the best answer. Each application of
+  $\T^\star$ makes the agent look one move further ahead, and the
+  contraction says that, far enough ahead, the starting guess no longer
+  matters.
+\end{intuition}
 
 \begin{remark}{What the theorem says}{opt-meaning}
   An optimal policy needs no randomness and no memory: in each state it is

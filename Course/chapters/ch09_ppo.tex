@@ -45,6 +45,14 @@ and finitely many states and actions.
   same for both policies.
 \end{proof}
 
+\begin{intuition}
+  The gain of a new policy is the sum, along its own games, of how much
+  better each of its moves is than what the old policy would have done
+  on average, as judged by the old policy's own values. It is like
+  evaluating a new player's moves with an old coach's judgement: every
+  move the coach rates above average adds to the score.
+\end{intuition}
+
 The lemma says that $\pi'$ is better than $\pi$ if it plays actions of
 positive advantage (for $\pi$) in the states \emph{it} visits. We cannot
 evaluate the right-hand side without playing $\pi'$, but we can evaluate
@@ -142,6 +150,17 @@ between the policies (a coupling argument). Its consequence is a
   \cref{prop:first-order}.
 \end{proof}
 
+\begin{intuition}
+  The surrogate pretends that the new policy visits the same states as the
+  old one; the KL term is the price of that pretence, larger when the
+  policies differ more. Its constant grows like $1 / (1 - \gamma)^2$: a small
+  change of behaviour at every step accumulates over the horizon into a
+  different distribution of states, and each state's value is itself of
+  order $1 / (1 - \gamma)$. The scheme is like climbing a hill in the fog
+  with a lower bound that touches the hill where one stands: climbing the
+  bound can only lift one higher on the hill.
+\end{intuition}
+
 This is a \emph{minorise--maximise} algorithm: $M_{\pi_k}$ is a lower bound
 of $J$ that touches it at $\pi_k$, and improving the bound improves $J$. The
 constant $C$ is so large that the steps would be tiny; TRPO (Schulman et
@@ -209,14 +228,16 @@ and expensive; PPO obtains a similar effect with a first-order method.
   s_i)$, as in the proof of \cref{prop:first-order}.
 \end{proof}
 
-In words: an action with a positive advantage has its probability
-increased, but once it has been increased by a factor $1 + \epsilon$
-there is nothing more to gain; an action with a negative advantage is
-made less likely, down to a factor $1 - \epsilon$. In the other directions
-(an action of positive advantage that became \emph{less} likely, for
-example) the objective is not clipped: by (i) it stays a pessimistic
-bound, so a step that went too far can be corrected. Property (iv) shows
-that A2C is the special case of PPO with a single gradient step per batch.
+\begin{intuition}
+  An action with a positive advantage has its probability increased, but
+  once it has been increased by a factor $1 + \epsilon$ there is nothing
+  more to gain; an action with a negative advantage is made less likely,
+  down to a factor $1 - \epsilon$. In the other directions (an action of
+  positive advantage that became \emph{less} likely, for example) the
+  objective is not clipped: by (i) it stays a pessimistic bound, so a step
+  that went too far can be corrected. Property (iv) shows that A2C is the
+  special case of PPO with a single gradient step per batch.
+\end{intuition}
 
 PPO also has a \emph{penalty} variant, which maximises $\hat L - \beta\,
 \overline{\mathrm{KL}}$ and adapts $\beta$ after each iteration (doubled if
@@ -283,6 +304,14 @@ size of the updates; the repository prints both during training.
   \sum_a \pi_{\mathrm{old}}(a \mid s) \log \frac{\pi_{\mathrm{old}}(a \mid
   s)}{\pi_\theta(a \mid s)}$ is the KL divergence.
 \end{proof}
+
+\begin{intuition}
+  The plain estimate $-\log \rho$ has the right mean but can be negative on
+  individual samples, which makes it noisy. Adding $\rho - 1$, whose mean
+  is zero, changes nothing on average but makes every term nonnegative:
+  each sample now says ``this action's probability changed by this much'',
+  whichever the direction of the change.
+\end{intuition}
 
 Its batch average is the \code{kl} column of the training log, and the
 fraction of samples outside the clipping interval is the \code{clip}

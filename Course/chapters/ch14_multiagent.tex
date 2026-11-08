@@ -29,6 +29,15 @@ agent can increase its return by changing its policy alone; every finite
 discounted Markov game has a Nash equilibrium in stationary stochastic
 policies (Fink, 1964).
 
+\begin{intuition}
+  A Nash equilibrium is a situation in which nobody regrets their own
+  choice, given what the others do: it is stable, not necessarily good. In
+  the prisoner's dilemma both players betray each other at the
+  equilibrium, although both would be better off cooperating. In
+  multi-agent RL ``optimal'' therefore has no single meaning, and the
+  answer depends on what the other agents do.
+\end{intuition}
+
 \section{Two-player zero-sum games}
 
 Zero-sum games are the multi-agent case where the single-agent theory
@@ -63,6 +72,16 @@ the value of the matrix game indexed by the two actions.
   $\norm{\T v - \T w}_\infty \leq \gamma \norm{v - w}_\infty$. The rest
   follows as for MDPs (\cref{thm:bellman-opt}).
 \end{proof}
+
+\begin{intuition}
+  Shapley's equation is the Bellman equation of a game: the value of a
+  position, if both players play perfectly from then on, is the value of
+  the one-shot game in which the payoffs are the immediate rewards plus the
+  discounted values of the positions reached. Each player picks the
+  (possibly random) strategy whose worst case is best. Randomness matters:
+  in rock--paper--scissors any deterministic strategy is exploited, and
+  only the uniform mixture is safe.
+\end{intuition}
 
 Minimax-Q (Littman, 1994) is the corresponding Q-learning: it learns
 $Q(s, a_1, a_2)$ with the target $r + \gamma\, \mathrm{val}[Q(s', \cdot,
@@ -102,6 +121,13 @@ decentralised actor $\mu_i(o_i)$ of its own observation, trained as in DDPG
 environment is stationary. MAPPO does the same with PPO and a centralised
 value function, and is a strong baseline for cooperative tasks.
 
+\begin{intuition}
+  This is a coach who sees the whole field during training, while the
+  players, during the match, act on what each of them sees. The critic,
+  which knows everything, is needed only to learn; the actors, which must
+  act alone, are all that is kept.
+\end{intuition}
+
 \paragraph{Value decomposition.} For a team with a common reward, a joint
 Q-function $Q_{\mathrm{tot}}(s, \mathbf{a})$ cannot be maximised by
 enumeration (the number of joint actions is exponential in $n$), and the
@@ -123,6 +149,13 @@ hypernetwork from the state, are non-negative.
   time by larger ones does not decrease it: $Q_{\mathrm{tot}}(s, \mathbf{a})
   \leq Q_{\mathrm{tot}}(s, \mathbf{a}^\star)$.
 \end{proof}
+
+\begin{intuition}
+  Monotonic mixing means that no agent can hurt the team by improving its
+  own value: if each agent's own estimate goes up, the team's goes up too.
+  Each agent can then simply pick its own best action, and the team's best
+  joint action follows, without any agent knowing what the others chose.
+\end{intuition}
 
 The joint Q-function is trained by the DQN loss on the common reward, its
 maximum in the target is computed agent by agent, and each agent acts
