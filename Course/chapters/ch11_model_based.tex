@@ -252,6 +252,30 @@ copy of the game, or the tree also branches on chance outcomes.
   the critical variations deeply and dismisses the others after a glance.
 \end{intuition}
 
+\begin{remark}{MCTS for two-player games}{mcts-two-players}
+  In a game between two opponents, such as Hex, chess or Go, the players
+  alternate along each path of the tree, and the statistics of a node are
+  kept from the point of view of the player who made the move leading to
+  it. During the backup the result is therefore flipped at each level: a
+  win for one player is a loss for the other. Each player then selects,
+  with UCT, the moves that are best \emph{for itself}, which is the minimax
+  principle obtained by sampling. The move finally played can be the most
+  visited child of the root (the usual, most robust choice), the child with
+  the highest mean value (optimistic when it has few visits), or the child
+  with the highest lower confidence bound (pessimistic).
+
+  A C++ implementation for Hex, with brute force, flat Monte Carlo and MCTS
+  players, and a step-by-step account of the algorithm on a small example,
+  is in the repository
+  \href{https://github.com/CL-BZH/Hex_game_AI}{CL-BZH/Hex\_game\_AI}
+  (\code{hex\_machine\_mcts.h} and \code{Docs/mcts.pdf}). The
+  \href{https://CL-BZH.github.io/MCTS-Visualizer/}{MCTS Visualizer}
+  (repository
+  \href{https://github.com/CL-BZH/MCTS-Visualizer}{CL-BZH/MCTS-Visualizer})
+  shows the tree growing iteration by iteration on a simple two-player game,
+  with the four phases and the UCB1 values of each node.
+\end{remark}
+
 \subsection{AlphaZero}
 
 AlphaZero (Silver et al., 2018) learnt chess, shogi and Go from the rules
