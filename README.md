@@ -356,6 +356,16 @@ Gives the board:
 
 ![board_example](./Media/board.png)
 
+To see a board, use `pacman_show_map.py`. It also prints the size of the maze, its number of free
+cells and dead ends, and whether it is left-right symmetric:
+```bash
+python pacman_show_map.py                     # board of game v2 at the start of a game
+python pacman_show_map.py -g v1 --seed 3      # game v1; the seed makes the random start reproducible
+python pacman_show_map.py --map pacman_map2   # any maze of pacman_maps.py, with the rules of v2
+python pacman_show_map.py --empty             # the maze alone, without the pieces
+python pacman_show_map.py -o board_v2.png     # save the image instead of opening a window
+```
+
 `algorthms.py` contains the algorithms for the agent.
 Currently, two algorithms are defined, DQN and A2C.
 
