@@ -262,6 +262,25 @@ gives when it is used during the games (97.5% to 97.7%, see above).
 One iteration took about one hour: almost all of it is the collection of the games with search, which
 runs on the CPU (4 processes), so the GPU is hardly used.
 
+Both agents, with and without search, on the same 1000 games
+(`python pacman_play.py -c <agent> -n 1000 --seed 1 -w 8 [--search 20]`):
+
+| Same 1000 games | Without search | With search (20 simulations) |
+|---|---|---|
+| `PPO_1` | 97.1% (29 lost) | 98.1% (19 lost) |
+| `Expert_1` | 97.7% (23 lost) | 97.9% (21 lost) |
+
+Expert iteration and the search correct the same mistakes: without search, the expert agent is better
+(it recovers about 60% of the search's gain, and no longer loses games by the off-by-one), but with the
+search both agents reach about 98% (the difference of 2 games is within the noise). The same 3 bad starts
+are lost in all four cases. The 15 to 18 other lost games resist both methods: they are probably traps
+from which the agent's own policy, which plays the simulations, cannot escape either. So `Expert_1` is
+the best choice without search (no extra cost), and either agent with `--search 20` gives the best results.
+
+(On these 1000 games `PPO_1` alone wins 97.1%, more than its usual 96%: the absolute levels vary from
+one set of games to another, but the differences inside the table are reliable, since all four
+configurations play the same games.)
+
 ## Some explanations about the software
 
 ### The files
