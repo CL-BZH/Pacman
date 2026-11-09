@@ -1,0 +1,199 @@
+\chapter{Exploration}
+\label{ch:exploration}
+
+An agent learns only about what it tries. The bandits of \cref{ch:bandits}
+showed the dilemma in its simplest form and the main answers: random
+exploration ($\varepsilon$-greedy), optimism (UCB) and posterior sampling
+(Thompson). In an MDP the dilemma is harder, because information is
+delayed: reaching an informative state may take many deliberate steps, and
+random actions rarely string them together. This chapter shows why, and
+presents the methods that scale the bandit ideas to deep RL.
+
+\section{Why dithering fails}
+
+$\varepsilon$-greedy, Boltzmann exploration and the entropy bonus of PPO
+are \emph{dithering} strategies: they perturb each action independently.
+The following example, a ``combination lock'', shows that they can need a
+time exponential in the size of the problem.
+
+\begin{proposition}{Random exploration in a chain}{chain}
+  Consider states $0, 1, \dots, n$, starting in $0$, where action
+  \emph{right} moves from $k$ to $k + 1$ and action \emph{left} returns to
+  $0$; the only reward is at state $n$. Under the uniform random policy,
+  the expected number of steps to reach $n$ from $0$ is $2^{n+1} - 2$.
+\end{proposition}
+
+\begin{proof}
+  Let $T_k$ be the expected number of steps to reach $n$ from $k$, so that
+  $T_n = 0$ and $T_k = 1 + \frac{1}{2} T_{k+1} + \frac{1}{2} T_0$ for $k <
+  n$. We show by induction that $T_k = T_0 - (2^{k+1} - 2)$. It holds for
+  $k = 0$, and if it holds for $k$, then $T_{k+1} = 2 T_k - 2 - T_0 = T_0 -
+  2^{k+2} + 2$. With $k = n$, $0 = T_0 - 2^{n+1} + 2$.
+\end{proof}
+
+\begin{intuition}
+  To reach the reward, the agent must play \emph{right} $n$ times in a row,
+  and a random agent does so with probability $2^{-n}$; any \emph{left}
+  sends it back to the start. Random exploration tries combinations at
+  random, and the number of combinations grows exponentially with the
+  depth at which the reward is hidden.
+\end{intuition}
+
+A greedy agent with optimistic initial values solves the same chain in
+$O(n^2)$ steps: every unvisited action looks attractive, so the agent
+tries the actions of the states it reaches systematically. This is the
+principle of the provably efficient algorithms.
+
+\section{Optimism in the face of uncertainty}
+
+\paragraph{Provably efficient exploration.} R-max (Brafman and
+Tennenholtz, 2002) treats every state-action pair visited fewer than $m$
+times as leading to a fictitious state of maximal reward $R_{\max}$, and
+plans in the resulting model; either the plan collects near-optimal reward,
+or it visits an under-explored pair, which can happen only finitely often.
+R-max and its successors (E$^3$, MBIE, UCRL2) find a near-optimal policy
+with a number of mistakes polynomial in the numbers of states and actions,
+in $1 / (1 - \gamma)$ and in the accuracy: the MDP analogue of the
+logarithmic regret of UCB.
+
+\paragraph{Exploration bonuses.} A simpler form of optimism adds a bonus
+to the reward,
+\begin{equation}
+  \label{eq:bonus}
+  \tilde r(s, a) = r(s, a) + \frac{\beta}{\sqrt{N(s, a)}},
+\end{equation}
+where $N(s, a)$ is the number of visits (MBIE-EB, Strehl and Littman,
+2008). The square root has the same origin as in UCB1 (\cref{def:ucb1}):
+the confidence interval of a mean estimated from $N$ samples has a width
+of order $1 / \sqrt{N}$. The bonus is propagated by the Bellman equations,
+so the agent is attracted to states from which under-explored pairs can be
+reached, not only to these pairs themselves.
+
+\begin{intuition}
+  The bonus is the error bar of UCB turned into a reward: the agent treats
+  what it knows little about as if it were good. It is drawn to the
+  unknown until the unknown has become known, and the Bellman equations
+  carry this attraction back along the paths that lead there.
+\end{intuition}
+
+\section{Counts in large state spaces}
+
+With images as states, every state is new, and $N(s) \in \{0, 1\}$. Deep
+RL methods replace counts by quantities that generalise.
+
+\paragraph{Pseudo-counts.} Bellemare et al.\ (2016) derive a count from a
+density model $\rho_n(s)$ trained on the states seen so far. Let $\rho'_n(s)$
+be the density the model would give to $s$ after one more training step on
+$s$. If the model were an empirical frequency, $\rho_n(s) = N / n$ and
+$\rho'_n(s) = (N + 1) / (n + 1)$. Solving these two equations for $N$
+defines the \emph{pseudo-count}
+\begin{equation}
+  \hat N_n(s) = \frac{\rho_n(s) \left( 1 - \rho'_n(s) \right)}{\rho'_n(s) -
+  \rho_n(s)},
+\end{equation}
+used in the bonus \eqref{eq:bonus}. (From $\rho = N/n$ and $\rho' = (N +
+1)/(n + 1)$: $n = N / \rho$, so $\rho' (N/\rho + 1) = N + 1$, which gives
+$N (\rho' - \rho) = \rho (1 - \rho')$.) With a pixel density model, the
+method made the first real progress on \emph{Montezuma's Revenge}, an
+Atari game where rewards are rare and DQN scored zero.
+
+\begin{intuition}
+  The pseudo-count asks: how much would seeing $s$ once more change the
+  model's belief in $s$? For a state seen thousands of times, one more
+  sighting changes almost nothing; for a state seen once, it changes a lot.
+  The size of the change reveals how familiar the state is, even when no
+  state ever repeats exactly.
+\end{intuition}
+
+\paragraph{Prediction error as novelty.} Random network distillation
+(RND, Burda et al., 2019) trains a network $\hat f_\psi$ to predict the
+output of a fixed, randomly initialised network $f$, on the states visited.
+The error $\norm{\hat f_\psi(s) - f(s)}^2$ is small on states similar to
+those seen often, and large on new states: it is used as the bonus. The
+target is deterministic, so the error does not stay large on states whose
+future is merely random, a failure of the earlier \emph{curiosity}
+methods, which use the error of a forward model of the dynamics. The
+intrinsic curiosity module (ICM, Pathak et al., 2017) avoids part of the
+problem by predicting in a feature space learnt to predict the agent's own
+actions (an inverse model), which ignores what the agent cannot influence:
+a television showing random images is not interesting to it.
+
+\begin{intuition}
+  RND is a familiarity test: the predictor can only imitate the random
+  network on states similar to those it has been trained on. A large error
+  means ``I have not been here before''. Because the random network is
+  fixed and deterministic, the error goes down once a state is familiar,
+  even if what happens in that state is random.
+\end{intuition}
+
+\begin{lstlisting}[caption={Random network distillation bonus (PyTorch)}]
+target = make_net().requires_grad_(False)   # fixed random network
+predictor = make_net()
+opt = torch.optim.Adam(predictor.parameters(), lr=1e-4)
+
+def bonus(states):                          # also trains the predictor
+    err = (predictor(states) - target(states)).pow(2).sum(1)
+    opt.zero_grad(); err.mean().backward(); opt.step()
+    return err.detach()                      # intrinsic reward
+\end{lstlisting}
+
+In practice the intrinsic rewards are normalised, combined with the
+extrinsic rewards with their own discount and value head, and used with
+PPO.
+
+\paragraph{Remembering where to return.} Go-Explore (Ecoffet et al.,
+2021) observed that novelty bonuses fade before the agent has learnt to
+return to the frontier of the explored region. It keeps an archive of
+visited ``cells'' (downscaled images), returns to a promising cell
+(deterministically in a simulator, or with a goal-conditioned policy), and
+explores from there; the trajectories found are then made robust by
+imitation. It solved \emph{Montezuma's Revenge} and \emph{Pitfall}.
+
+\section{Posterior sampling and deep exploration}
+
+Thompson sampling also extends to MDPs. Posterior sampling for RL (PSRL,
+Osband et al., 2013) keeps a posterior over MDPs, samples one at the start
+of each episode, and follows its optimal policy for the whole episode.
+Committing to one hypothesis for an episode produces \emph{deep}
+exploration: if the sampled MDP is optimistic about a distant state, the
+agent goes there deliberately, unlike dithering. PSRL has a regret of
+order $\tilde O(H S \sqrt{A T})$ for episodes of length $H$.
+
+\begin{intuition}
+  PSRL behaves like a scientist who picks one plausible hypothesis about
+  the world and tests it for a whole episode, rather than flipping a coin
+  at every step. If the hypothesis says that a distant state is rewarding,
+  the agent goes all the way there and finds out. Over time the hypotheses
+  that keep being refuted lose their posterior probability.
+\end{intuition}
+
+Bootstrapped DQN (Osband et al., 2016) approximates the posterior with an
+ensemble of $K$ Q-heads on a shared torso, each trained on its own
+bootstrap sample of the data (each transition is used by each head with
+probability $1/2$). At each episode one head is drawn at random and
+followed greedily. NoisyNets (\cref{sec:rainbow}) are a cheaper relative:
+the noise of the weights is sampled once for many steps, which also gives
+temporally consistent exploration.
+
+\begin{pacman}{Exploration in Pacman}{exploration-pacman}
+  Exploration is not the bottleneck in Pacman: the cookies are a dense
+  reward, and the random ghosts produce a wide variety of situations by
+  themselves. $\varepsilon$-greedy (DQN) and the entropy bonus with
+  $c_e = 0.03$ (PPO) suffice. Where exploration matters is in the rare,
+  dangerous situations (being trapped between two ghosts), which the agent
+  meets too seldom to learn well: this is why the look-ahead search of
+  \cref{ch:model-based} helps most there. A maze with a single, distant
+  reward and no cookies would be a hard exploration problem.
+\end{pacman}
+
+\section{Summary}
+
+\begin{itemize}[nosep]
+  \item Dithering ($\varepsilon$-greedy, entropy bonuses) explores in time
+    exponential in the depth of the reward, even in a chain.
+  \item Optimism (R-max, bonuses $\beta / \sqrt{N}$) gives polynomial
+    guarantees; in large spaces, counts are replaced by pseudo-counts from
+    density models or by prediction errors (RND, ICM).
+  \item Posterior sampling (PSRL, bootstrapped DQN) explores deeply by
+    committing to a sampled hypothesis for a whole episode.
+\end{itemize}

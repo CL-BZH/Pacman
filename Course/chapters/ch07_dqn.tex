@@ -420,11 +420,52 @@ with torch.no_grad():                      # Polyak averaging
   much as the algorithm.
 \end{remark}
 
-\begin{remark}{Results}{dqn-results}
-  The results of the DQN agent trained for $40$ million steps on Kaggle
-  will be added here, and compared with the A2C/PPO agent of
-  \cref{ch:ppo}.
-\end{remark}
+\begin{pacman}{Results on game \code{v1}}{dqn-results}
+  The agent was trained on a Kaggle GPU in two sessions
+  (\cref{fig:dqn-training}). The first lasted $60$ million steps, with
+  $\varepsilon$ decreasing from $1$ to $0.02$ over the first $15$ million
+  and a learning rate decreasing linearly from $2.5 \times 10^{-4}$ to $5
+  \times 10^{-5}$. For $55$ million steps the agent won no game; the
+  reward first improved while $\varepsilon$ was large, then fell back when
+  it reached its floor. Only in the last $5$ million steps, once the
+  learning rate was below about $7 \times 10^{-5}$, did the agent take off
+  ($6\%$ of games won). The second session resumed from there for $50$
+  million steps, with the learning rate held at $5 \times 10^{-5}$ and
+  $\varepsilon = 0.02$: $40\%$ of games won after $8$ million steps, about
+  $50\%$ after $50$ million.
+
+  Played greedily on $1000$ games, the final agent wins $49.8\%$ of them.
+  $8\%$ of the games are stopped after $800$ moves, all of them after both
+  ghosts were eaten: with nothing left to fear, the greedy policy goes
+  round in circles in an area already cleared, because the values of the
+  neighbouring states are almost equal and the argmax always picks the
+  same moves. Playing a random move with probability $0.05$ once the
+  ghosts are eaten (as the A2C agent samples its moves then) breaks the
+  loops: $53.5\%$ of games won, and almost no game is stopped. The losses
+  ($46\%$ of the games) are unchanged; in a third of the games the agent is
+  caught before reaching any power cookie.
+
+  The A2C/PPO agent of \cref{ch:ppo} wins $96.6\%$ of the games after about
+  $20$ million steps; DQN, after $110$ million, about half of them. Two
+  lessons: the learning rate decided whether DQN learnt at all (the first
+  session is consistent with a rate too large for most of the training,
+  though one run does not prove it), and in a game where one mistake ends
+  everything, an on-policy actor-critic, which learns from the agent's
+  current behaviour, did much better than learning from a replay memory in
+  which the rare fatal transitions are a tiny fraction.
+\end{pacman}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\textwidth]{../Media/dqn_training_run1.png}\\[2pt]
+  \small (a) first session: $60$ million steps\\[6pt]
+  \includegraphics[width=\textwidth]{../Media/dqn_training_run2.png}\\[2pt]
+  \small (b) second session, resumed from (a): $50$ million steps
+  \caption{Training of the DQN agent on game \code{v1} (Kaggle GPU):
+    reward per game, games won and lost, and ghosts left at the end
+    (plotted with \code{Tools/plottings.ipynb}).}
+  \label{fig:dqn-training}
+\end{figure}
 
 \section{Summary}
 

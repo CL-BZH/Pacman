@@ -1,0 +1,218 @@
+\chapter{Multi-agent reinforcement learning}
+\label{ch:multiagent}
+
+Pacman shares its maze with ghosts. In this course they follow fixed rules,
+so from Pacman's point of view they are part of the environment, and the
+problem is an MDP. If the ghosts learned too, each agent would face an
+environment that changes as the others learn: the problem would become a
+\emph{game}. Multi-agent RL covers competitive games (chess, Go, poker,
+StarCraft), cooperative teams (robots, traffic lights, network routing)
+and mixed situations (markets, negotiation).
+
+\section{Markov games}
+
+\begin{definition}{Markov game}{markov-game}
+  A Markov (or stochastic) game with $n$ agents is a tuple $(\States,
+  \Actions_1, \dots, \Actions_n, p, r_1, \dots, r_n, \gamma)$: in state $s$,
+  every agent $i$ chooses an action $a_i$, the joint action $\mathbf{a} =
+  (a_1, \dots, a_n)$ determines the transition $p(s' \mid s, \mathbf{a})$,
+  and agent $i$ receives $r_i(s, \mathbf{a})$. Each agent maximises its own
+  expected discounted return.
+\end{definition}
+
+With one agent it is an MDP; with one state it is a repeated matrix game.
+The game is \emph{fully cooperative} if all the rewards are equal,
+\emph{zero-sum} if $n = 2$ and $r_1 = -r_2$. In general there is no single
+optimal policy: the best policy of an agent depends on those of the others.
+A joint policy $(\pi_1, \dots, \pi_n)$ is a \emph{Nash equilibrium} if no
+agent can increase its return by changing its policy alone; every finite
+discounted Markov game has a Nash equilibrium in stationary stochastic
+policies (Fink, 1964).
+
+\begin{intuition}
+  A Nash equilibrium is a situation in which nobody regrets their own
+  choice, given what the others do: it is stable, not necessarily good. In
+  the prisoner's dilemma both players betray each other at the
+  equilibrium, although both would be better off cooperating. In
+  multi-agent RL ``optimal'' therefore has no single meaning, and the
+  answer depends on what the other agents do.
+\end{intuition}
+
+\section{Two-player zero-sum games}
+
+Zero-sum games are the multi-agent case where the single-agent theory
+extends most completely. In a matrix game with payoff matrix $A$ (the
+first player receives $x^\top A y$ for mixed strategies $x, y$), von
+Neumann's minimax theorem states that $\max_x \min_y x^\top A y = \min_y
+\max_x x^\top A y$; this common \emph{value} $\mathrm{val}(A)$ is computed
+by linear programming. Shapley (1953) extended the Bellman equations: the
+value of a zero-sum Markov game satisfies
+\begin{equation}
+  v(s) = \mathrm{val}\Bigl[ r(s, a_1, a_2) + \gamma \sum_{s'} p(s' \mid s,
+  a_1, a_2)\, v(s') \Bigr]_{a_1, a_2},
+\end{equation}
+the value of the matrix game indexed by the two actions.
+
+\begin{theorem}{Shapley}{shapley}
+  The operator $\T$ defined by the right-hand side is a $\gamma$-contraction
+  in the sup norm. Its unique fixed point is the value of the game, and the
+  optimal mixed strategies of the matrix games at the fixed point form a
+  stationary equilibrium.
+\end{theorem}
+
+\begin{proof}
+  We prove the contraction. First, $\mathrm{val}$ is non-expansive: if
+  $\abs{A_{jk} - B_{jk}} \leq \delta$ for all $j, k$, then $x^\top A y \leq
+  x^\top B y + \delta$ for all mixed strategies, since $x^\top (A - B) y$
+  is an average of entries of $A - B$; taking $\min_y$ then $\max_x$ gives
+  $\mathrm{val}(A) \leq \mathrm{val}(B) + \delta$, and symmetrically. For two
+  functions $v, w$, the matrices defining $(\T v)(s)$ and $(\T w)(s)$
+  differ entrywise by $\gamma \sum_{s'} p(s' \mid s, a_1, a_2) (v(s') -
+  w(s'))$, at most $\gamma \norm{v - w}_\infty$ in absolute value. Hence
+  $\norm{\T v - \T w}_\infty \leq \gamma \norm{v - w}_\infty$. The rest
+  follows as for MDPs (\cref{thm:bellman-opt}).
+\end{proof}
+
+\begin{intuition}
+  Shapley's equation is the Bellman equation of a game: the value of a
+  position, if both players play perfectly from then on, is the value of
+  the one-shot game in which the payoffs are the immediate rewards plus the
+  discounted values of the positions reached. Each player picks the
+  (possibly random) strategy whose worst case is best. Randomness matters:
+  in rock--paper--scissors any deterministic strategy is exploited, and
+  only the uniform mixture is safe.
+\end{intuition}
+
+Minimax-Q (Littman, 1994) is the corresponding Q-learning: it learns
+$Q(s, a_1, a_2)$ with the target $r + \gamma\, \mathrm{val}[Q(s', \cdot,
+\cdot)]$, solving a small linear program at each update, and converges to
+the value of the game under the same conditions as Q-learning. Nash-Q
+extends the idea to general-sum games, but needs restrictive assumptions:
+equilibria are no longer unique or interchangeable.
+
+\paragraph{Self-play.} In symmetric games, an agent can learn by playing
+against copies of itself. TD-Gammon (Tesauro, 1995), AlphaZero
+(\cref{ch:model-based}) and OpenAI Five learnt this way. Pure self-play
+may cycle (as in rock--paper--scissors, where each best response is beaten
+by the next) or overfit to its own style. \emph{Fictitious play} best
+responds to the \emph{average} of the past opponents, and converges to
+equilibrium in zero-sum games; population methods keep a league of past
+and exploiting agents (AlphaStar, Vinyals et al., 2019) or compute
+equilibria of the meta-game between policies (PSRO, Lanctot et al.,
+2017). Imperfect-information games such as poker require different tools
+(counterfactual regret minimisation, which beat professional players at
+heads-up and six-player no-limit hold'em).
+
+\section{Learning in cooperative teams}
+
+\paragraph{Independent learners.} The simplest approach lets each agent run
+its own single-agent algorithm (independent Q-learning, or independent PPO),
+treating the others as part of the environment. It often works, but the
+environment of each agent is non-stationary while the others learn, so the
+convergence guarantees are lost, and the replay memory of DQN holds
+transitions generated by obsolete policies of the others.
+
+\paragraph{Centralised training, decentralised execution.} In simulation,
+training can use information that will not be available at execution: the
+global state and the actions of all the agents. MADDPG (Lowe et al., 2017)
+gives each agent a centralised critic $Q_i(s, a_1, \dots, a_n)$ and a
+decentralised actor $\mu_i(o_i)$ of its own observation, trained as in DDPG
+(\cref{ch:continuous}); since the critic sees all the actions, its
+environment is stationary. MAPPO does the same with PPO and a centralised
+value function, and is a strong baseline for cooperative tasks.
+
+\begin{intuition}
+  This is a coach who sees the whole field during training, while the
+  players, during the match, act on what each of them sees. The critic,
+  which knows everything, is needed only to learn; the actors, which must
+  act alone, are all that is kept.
+\end{intuition}
+
+\paragraph{Value decomposition.} For a team with a common reward, a joint
+Q-function $Q_{\mathrm{tot}}(s, \mathbf{a})$ cannot be maximised by
+enumeration (the number of joint actions is exponential in $n$), and the
+agents must act on their own. VDN (Sunehag et al., 2018) writes
+$Q_{\mathrm{tot}} = \sum_i Q_i(o_i, a_i)$; QMIX (Rashid et al., 2018)
+combines the $Q_i$ with a mixing network whose weights, produced by a
+hypernetwork from the state, are non-negative.
+
+\begin{proposition}{Monotonic mixing}{qmix}
+  If $Q_{\mathrm{tot}}(s, \mathbf{a}) = f_s(Q_1(o_1, a_1), \dots, Q_n(o_n,
+  a_n))$ with $f_s$ non-decreasing in each argument, then the joint action
+  made of the individual greedy actions $a_i^\star = \argmax_{a_i} Q_i(o_i,
+  a_i)$ maximises $Q_{\mathrm{tot}}(s, \cdot)$.
+\end{proposition}
+
+\begin{proof}
+  For any joint action $\mathbf{a}$, $Q_i(o_i, a_i) \leq Q_i(o_i,
+  a_i^\star)$ for every $i$, and replacing the arguments of $f_s$ one at a
+  time by larger ones does not decrease it: $Q_{\mathrm{tot}}(s, \mathbf{a})
+  \leq Q_{\mathrm{tot}}(s, \mathbf{a}^\star)$.
+\end{proof}
+
+\begin{intuition}
+  Monotonic mixing means that no agent can hurt the team by improving its
+  own value: if each agent's own estimate goes up, the team's goes up too.
+  Each agent can then simply pick its own best action, and the team's best
+  joint action follows, without any agent knowing what the others chose.
+\end{intuition}
+
+The joint Q-function is trained by the DQN loss on the common reward, its
+maximum in the target is computed agent by agent, and each agent acts
+greedily on its own $Q_i$. The price is representational: monotonic
+mixtures cannot express every joint Q-function (for instance, when the
+best action of an agent depends on what another does).
+
+\begin{pacman}{Learning ghosts}{ghosts-team}
+  The ghosts of \code{ghost\_agents.py} follow fixed rules. Making them
+  learn turns Pacman into a two-team zero-sum Markov game: Pacman against
+  a cooperative team of ghosts with the opposite reward. The obvious scheme
+  alternates: train the ghosts (with QMIX or MAPPO) against a frozen PPO
+  Pacman, then retrain Pacman against the new ghosts, and so on. Each side
+  then learns to beat only the opponent it faces now, and the training can
+  cycle. For example, the ghosts learn to guard the power cookies, so
+  Pacman learns to clear the far corners first; the ghosts then spread out
+  to cover the corners, so Pacman learns to rush the power cookies, which
+  the ghosts learn to guard again\dots{} Each version beats the previous
+  one and forgets how to beat the older ones, as in rock--paper--scissors.
+
+  The standard remedy is a \emph{league}: a copy of each side is saved
+  regularly, and each side trains against opponents drawn from all the
+  saved copies, not only the latest:
+  \begin{enumerate}[nosep]
+    \item train Pacman against the rule-based ghosts; save it as $P_0$;
+    \item train ghosts against $P_0$; save them as $G_0$;
+    \item train Pacman against opponents drawn from $\{$rule-based ghosts,
+      $G_0\}$; save it as $P_1$;
+    \item train ghosts against opponents drawn from $\{P_0, P_1\}$; save them
+      as $G_1$; and so on, the pools growing at each round.
+  \end{enumerate}
+  A Pacman that forgets how to beat the ghosts of an earlier generation
+  loses when they are drawn, and relearns it. The opponents can be drawn
+  uniformly, or more often among those the current agent loses against
+  (as in AlphaStar's league); the rule-based ghosts stay in the pool, so
+  that Pacman keeps mastering the original game.
+\end{pacman}
+
+\begin{intuition}
+  Training against the latest opponent only is chasing a moving target:
+  the agent adapts to the opponent's current habits, not to the game.
+  Training against a growing collection of past opponents makes forgetting
+  costly, and pushes each side towards strategies that are good against
+  everything seen so far. In the limit this is fictitious play, which
+  converges to an equilibrium in zero-sum games where plain alternation can
+  cycle forever.
+\end{intuition}
+
+\section{Summary}
+
+\begin{itemize}[nosep]
+  \item Markov games generalise MDPs to several agents; the solution
+    concept is an equilibrium, not an optimal policy.
+  \item In two-player zero-sum games, Shapley's operator is a contraction
+    and minimax-Q learns the value; self-play, fictitious play and leagues
+    train agents against themselves.
+  \item For cooperative teams, centralised training with decentralised
+    execution (MADDPG, MAPPO) restores stationarity, and monotonic value
+    decomposition (VDN, QMIX) makes the joint maximisation decentralised.
+\end{itemize}

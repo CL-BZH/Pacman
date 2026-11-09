@@ -220,6 +220,23 @@ Without a local GPU, the notebooks `./Tools/train_kaggle.ipynb` and `./Tools/tra
 train the A2C/PPO or the DQN agent on a free Kaggle or Google Colab GPU, save checkpoints
 regularly, and can resume a previous training.
 
+**Results (game v1).** The agent `Trainings/DQN/pacman_dqn_final.pth` was trained on a Kaggle GPU
+in two sessions. The first one (60M steps, learning rate decreasing from 2.5e-4 to 5e-5) won no
+game for 55M steps and only took off at the very end, once the learning rate had become small:
+
+![dqn_training_run1](./Media/dqn_training_run1.png)
+
+The second one resumed from it for 50M steps with the learning rate kept at 5e-5 and
+epsilon = 0.02 (the notebooks now resume DQN this way):
+
+![dqn_training_run2](./Media/dqn_training_run2.png)
+
+On 1000 games (`python pacman_play.py -a dqn -n 1000`) it wins **53.5%** of the games. Once both
+ghosts are eaten, `pacman_play.py` lets the DQN agent play a random move with probability 0.05
+(`--greedy` to disable): played fully greedily, it goes round in circles in an area already
+cleared in 8% of the games and wins only 49.8%. The A2C/PPO agent wins 96.6% of the games after
+about 20M steps; here, after 110M steps, DQN wins about half of them.
+
 With the ipython notebook `./Tools/plottings.ipynb` it is possible to visualize 
 the progress of the training. Below is an example of the plotting of the training
 evolution.

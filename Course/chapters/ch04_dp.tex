@@ -1,0 +1,401 @@
+\chapter{Dynamic programming}
+\label{ch:dp}
+
+When the dynamics $p$ of the MDP are known, the Bellman equations of
+\cref{ch:mdp} can be solved by iterating the Bellman operators: this is
+\emph{dynamic programming} (DP). DP is rarely applicable as such (the
+dynamics are often unknown, and the number of states is usually huge, as in
+Pacman), but every RL algorithm of this course is an approximation of one of
+its two schemes, policy iteration and value iteration. This chapter
+presents them with complete convergence proofs and solves exactly a
+reduced version of Pacman.
+
+\section{Policy evaluation}
+
+\emph{Policy evaluation} computes $v_\pi$ for a given policy $\pi$. By
+\cref{thm:bellman-exp} it is the unique fixed point of the contraction
+$\T^\pi$, so the iteration $v_{k+1} = \T^\pi v_k$ converges to it from any
+starting point.
+
+\begin{algobox}{Iterative policy evaluation}
+  \begin{algorithmic}[1]
+    \Require policy $\pi$, tolerance $\varepsilon > 0$
+    \State $v(s) \gets 0$ for all $s$
+    \Repeat
+      \State $\Delta \gets 0$
+      \For{each state $s$}
+        \State $u \gets \sum_a \pi(a \mid s) \sum_{s', r} p(s', r \mid s, a)
+          \left[ r + \gamma\, v(s') \right]$
+        \State $\Delta \gets \max(\Delta, \abs{u - v(s)})$;\quad $v(s) \gets u$
+      \EndFor
+    \Until{$\Delta < \varepsilon$}
+    \State \Return $v$
+  \end{algorithmic}
+\end{algobox}
+
+The algorithm above updates $v$ \emph{in place}: the new value of a state is
+used immediately for the following states of the same sweep. This variant
+(Gauss--Seidel) also converges, usually faster; we prove the convergence of
+the synchronous variant, which is a direct consequence of the contraction.
+
+\begin{proposition}{Convergence of policy evaluation}{pe-conv}
+  Let $v_{k+1} = \T^\pi v_k$. Then $\norm{v_k - v_\pi}_\infty \leq
+  \gamma^k \norm{v_0 - v_\pi}_\infty$, and if $\norm{v_{k+1} -
+  v_k}_\infty \leq \varepsilon$ then
+  \begin{equation}
+    \norm{v_{k+1} - v_\pi}_\infty \leq \frac{\gamma\, \varepsilon}{1 -
+    \gamma}.
+  \end{equation}
+\end{proposition}
+
+\begin{proof}
+  The first inequality follows by induction from $\norm{v_{k+1} -
+  v_\pi}_\infty = \norm{\T^\pi v_k - \T^\pi v_\pi}_\infty \leq \gamma
+  \norm{v_k - v_\pi}_\infty$. For the second,
+  \begin{align*}
+    \norm{v_{k+1} - v_\pi}_\infty
+    &= \norm{\T^\pi v_k - \T^\pi v_\pi}_\infty
+      \leq \gamma \norm{v_k - v_\pi}_\infty \\
+    &\leq \gamma \left( \norm{v_k - v_{k+1}}_\infty
+      + \norm{v_{k+1} - v_\pi}_\infty \right)
+      \leq \gamma\, \varepsilon + \gamma \norm{v_{k+1} - v_\pi}_\infty,
+  \end{align*}
+  and we solve for $\norm{v_{k+1} - v_\pi}_\infty$.
+\end{proof}
+
+\begin{intuition}
+  A small change between two sweeps does not mean that the values are
+  almost right: each sweep only reduces the error by the factor $\gamma$,
+  so the remaining error can be $\gamma / (1 - \gamma)$ times the last
+  change, $99$ times with $\gamma = 0.99$. Slowly changing values may still
+  be far from the answer, and the stopping tolerance must be chosen
+  accordingly.
+\end{intuition}
+
+\section{Policy improvement}
+
+Knowing $v_\pi$, can we find a better policy? The natural candidate is the
+policy that is greedy with respect to $q_\pi$: in each state, play the
+action that is best if $\pi$ is followed afterwards.
+
+\begin{theorem}{Policy improvement}{pi-improvement}
+  Let $\pi$ and $\pi'$ be two policies such that, for every state $s$,
+  \begin{equation}
+    \label{eq:improvement-cond}
+    \sum_a \pi'(a \mid s)\, q_\pi(s, a) \geq v_\pi(s).
+  \end{equation}
+  Then $v_{\pi'} \geq v_\pi$. If moreover the inequality
+  \eqref{eq:improvement-cond} is strict in some state $s$, then
+  $v_{\pi'}(s) > v_\pi(s)$.
+\end{theorem}
+
+\begin{proof}
+  The left-hand side of \eqref{eq:improvement-cond} is $(\T^{\pi'}
+  v_\pi)(s)$, by \eqref{eq:q-from-v}. The hypothesis is therefore
+  $\T^{\pi'} v_\pi \geq v_\pi$. By monotonicity of $\T^{\pi'}$
+  (\cref{lem:contraction}) and induction, $(\T^{\pi'})^n v_\pi \geq
+  (\T^{\pi'})^{n-1} v_\pi \geq \dots \geq v_\pi$ for every $n$, and
+  $(\T^{\pi'})^n v_\pi \to v_{\pi'}$ as $n \to \infty$. Hence
+  $v_{\pi'} \geq \T^{\pi'} v_\pi \geq v_\pi$, the first inequality
+  being the limit of $(\T^{\pi'})^n v_\pi \geq \T^{\pi'} v_\pi$. If
+  $(\T^{\pi'} v_\pi)(s) > v_\pi(s)$, then $v_{\pi'}(s) \geq
+  (\T^{\pi'} v_\pi)(s) > v_\pi(s)$.
+\end{proof}
+
+\begin{intuition}
+  The hypothesis compares two plans that differ only in the first move:
+  play $\pi'$ once, then return to $\pi$, versus play $\pi$ throughout. If
+  deviating for one move never hurts, then deviating at every move does not
+  hurt either: each deviation starts from a state where it is at least as
+  good, and the gains add up along the trajectory.
+\end{intuition}
+
+\begin{corollary}{Greedy improvement}{greedy-improvement}
+  Let $\pi'$ be greedy with respect to $q_\pi$: $\pi'(s) \in \argmax_a
+  q_\pi(s, a)$ for every $s$. Then $v_{\pi'} \geq v_\pi$. If $v_{\pi'} =
+  v_\pi$, then $\pi$ and $\pi'$ are both optimal.
+\end{corollary}
+
+\begin{proof}
+  $q_\pi(s, \pi'(s)) = \max_a q_\pi(s, a) \geq \sum_a \pi(a \mid s)\,
+  q_\pi(s, a) = v_\pi(s)$, so \cref{thm:pi-improvement} applies. If
+  $v_{\pi'} = v_\pi$, then by \eqref{eq:q-from-v} $q_{\pi'} = q_\pi$, and
+  \begin{equation*}
+    v_{\pi'}(s) = q_{\pi'}(s, \pi'(s)) = q_\pi(s, \pi'(s))
+    = \max_a q_\pi(s, a)
+    = \max_a \left[ r(s, a) + \gamma \sum_{s'} p(s' \mid s, a)\,
+      v_{\pi'}(s') \right]:
+  \end{equation*}
+  $v_{\pi'}$ is a fixed point of $\T^\star$, hence equals $v_\star$
+  (\cref{thm:bellman-opt}).
+\end{proof}
+
+\begin{intuition}
+  To improve a policy it suffices to ask, in every state, ``which action
+  would be best if I followed my current policy afterwards?'', and to play
+  it. If the answer is always the action already played, no one-move
+  deviation helps, and then no deviation of any kind helps: the policy is
+  optimal. Optimality can be checked one move at a time.
+\end{intuition}
+
+\section{Policy iteration}
+
+Alternating evaluation and greedy improvement gives \emph{policy
+iteration}.
+
+\begin{algobox}{Policy iteration}
+  \begin{algorithmic}[1]
+    \State choose any deterministic policy $\pi_0$
+    \For{$k = 0, 1, 2, \dots$}
+      \State \textbf{evaluation:} compute $v_{\pi_k}$
+        (\cref{prop:matrix} or iterative policy evaluation)
+      \State \textbf{improvement:} $\pi_{k+1}(s) \gets \argmax_a \left[
+        r(s, a) + \gamma \sum_{s'} p(s' \mid s, a)\, v_{\pi_k}(s') \right]$,
+        keeping $\pi_k(s)$ in case of a tie
+      \If{$\pi_{k+1} = \pi_k$} \Return $\pi_k$, $v_{\pi_k}$ \EndIf
+    \EndFor
+  \end{algorithmic}
+\end{algobox}
+
+\begin{theorem}{Convergence of policy iteration}{pi-conv}
+  Policy iteration stops after a finite number of iterations, at most the
+  number $\abs{\Actions}^{\abs{\States}}$ of deterministic policies, and
+  returns an optimal policy.
+\end{theorem}
+
+\begin{proof}
+  If $\pi_{k+1} \neq \pi_k$, then because ties keep the previous action,
+  $\pi_{k+1}(s)$ strictly improves on $\pi_k(s)$ in some state:
+  $q_{\pi_k}(s, \pi_{k+1}(s)) > q_{\pi_k}(s, \pi_k(s)) = v_{\pi_k}(s)$. By
+  \cref{thm:pi-improvement}, $v_{\pi_{k+1}} \geq v_{\pi_k}$ with strict
+  inequality in $s$. The value functions $v_{\pi_0}, v_{\pi_1}, \dots$
+  therefore strictly increase (for the partial order of functions), so no
+  policy appears twice; since there are finitely many deterministic
+  policies, the algorithm stops. When it stops, $\pi_k$ is greedy with
+  respect to its own $q_{\pi_k}$, so $\T^\star v_{\pi_k} = \T^{\pi_k}
+  v_{\pi_k} = v_{\pi_k}$: $v_{\pi_k} = v_\star$ and $\pi_k$ is optimal.
+\end{proof}
+
+The bound $\abs{\Actions}^{\abs{\States}}$ is very pessimistic: in practice
+policy iteration converges in a handful of iterations, as the Pacman example
+below shows.
+
+\section{Value iteration}
+
+Policy iteration evaluates each policy completely before improving it.
+\emph{Value iteration} goes to the other extreme: it applies the Bellman
+optimality operator directly, $v_{k+1} = \T^\star v_k$, which amounts to
+one sweep of evaluation interleaved with an improvement in every state.
+
+\begin{algobox}{Value iteration}
+  \begin{algorithmic}[1]
+    \Require tolerance $\varepsilon > 0$
+    \State $v(s) \gets 0$ for all $s$
+    \Repeat
+      \State $v_{\text{old}} \gets v$
+      \For{each state $s$}
+        \State $v(s) \gets \max_a \left[ r(s, a) + \gamma \sum_{s'}
+          p(s' \mid s, a)\, v_{\text{old}}(s') \right]$
+      \EndFor
+    \Until{$\norm{v - v_{\text{old}}}_\infty < \varepsilon$}
+    \State \Return $v$ and a greedy policy with respect to $v$
+  \end{algorithmic}
+\end{algobox}
+
+\begin{theorem}{Convergence of value iteration}{vi-conv}
+  Let $v_{k+1} = \T^\star v_k$.
+  \begin{enumerate}[nosep, label=(\roman*)]
+    \item $\norm{v_k - v_\star}_\infty \leq \gamma^k \norm{v_0 -
+      v_\star}_\infty$.
+    \item If $\norm{v_{k+1} - v_k}_\infty \leq \varepsilon$, then
+      $\norm{v_{k+1} - v_\star}_\infty \leq \gamma \varepsilon / (1 -
+      \gamma)$.
+    \item If $\norm{v - v_\star}_\infty \leq \delta$ and $\pi$ is greedy
+      with respect to $v$, then $\norm{v_\pi - v_\star}_\infty \leq 2
+      \gamma \delta / (1 - \gamma)$.
+  \end{enumerate}
+\end{theorem}
+
+\begin{proof}
+  (i) and (ii) are proved exactly as \cref{prop:pe-conv}, with $\T^\star$
+  and its fixed point $v_\star$ in place of $\T^\pi$ and $v_\pi$.
+
+  (iii) Since $\pi$ is greedy with respect to $v$, $\T^\pi v = \T^\star v$.
+  Then
+  \begin{align*}
+    \norm{v_\pi - v_\star}_\infty
+    &\leq \norm{\T^\pi v_\pi - \T^\pi v}_\infty
+      + \norm{\T^\star v - \T^\star v_\star}_\infty
+    \leq \gamma \norm{v_\pi - v}_\infty + \gamma \norm{v - v_\star}_\infty
+    \\
+    &\leq \gamma \left( \norm{v_\pi - v_\star}_\infty
+      + \norm{v_\star - v}_\infty \right) + \gamma\, \delta
+    \leq \gamma \norm{v_\pi - v_\star}_\infty + 2 \gamma\, \delta,
+  \end{align*}
+  using $v_\pi = \T^\pi v_\pi$ and $v_\star = \T^\star v_\star$ in the first
+  line. Solving for $\norm{v_\pi - v_\star}_\infty$ gives the result.
+\end{proof}
+
+\begin{intuition}
+  Statement (iii) is what matters in practice: approximate values give
+  good decisions. An error $\delta$ in the values can make the agent choose
+  an action that is worse by about $2 \delta$ (one action overestimated by
+  $\delta$, the best one underestimated by $\delta$), and such losses can
+  occur at every step, hence the factor of the horizon $1 / (1 - \gamma)$.
+  To act well, the values need not be exact; they need to rank the actions
+  correctly.
+\end{intuition}
+
+\paragraph{Asynchronous DP.} Nothing forces the backups to sweep all the
+states in order. \emph{Asynchronous} value iteration updates the states in
+any order, one at a time, using the latest values (as the in-place policy
+evaluation above): it still converges to $v_\star$ as long as every state is
+updated infinitely often (Bertsekas and Tsitsiklis, 1989). This freedom
+allows focusing the computation on the states that matter, for example the
+states visited by the current policy (\emph{real-time dynamic
+programming}), or the states whose value changed most recently
+(\emph{prioritised sweeping}, \cref{ch:model-based}).
+
+\section{Linear programming}
+
+The optimal value is also the solution of a linear program, which gives
+another exact method and the basis of several modern algorithms.
+
+\begin{theorem}{LP formulation}{lp}
+  Let $\mu$ be any distribution with $\mu(s) > 0$ for all $s$. Then
+  $v_\star$ is the unique solution of
+  \begin{equation}
+    \label{eq:lp}
+    \min_{v \in \R^{\States}} \sum_s \mu(s)\, v(s) \quad
+    \text{subject to} \quad v(s) \geq r(s, a) + \gamma \sum_{s'} p(s' \mid
+    s, a)\, v(s') \quad \text{for all } s, a.
+  \end{equation}
+\end{theorem}
+
+\begin{proof}
+  The constraints say exactly $v \geq \T^\star v$. Then by monotonicity of
+  $\T^\star$ (\cref{lem:contraction}), $v \geq \T^\star v \geq
+  (\T^\star)^2 v \geq \dots$, and the iterates converge to $v_\star$
+  (\cref{thm:bellman-opt}): every feasible $v$ satisfies $v \geq v_\star$.
+  Conversely $v_\star$ is feasible ($v_\star = \T^\star v_\star$). Since
+  $\mu > 0$, $\sum_s \mu(s) v(s) \geq \sum_s \mu(s) v_\star(s)$ with
+  equality only if $v = v_\star$.
+\end{proof}
+
+\begin{intuition}
+  A feasible $v$ is an \emph{optimistic} value: in every state it is at
+  least what any action gives if the future is valued by $v$. Such a
+  function overestimates $v_\star$ everywhere, and the linear program looks
+  for the lowest one: the tightest ``roof'' over the one-step values of all
+  the actions, which touches them exactly at $v_\star$.
+\end{intuition}
+
+The program has $\abs{\States}$ variables and $\abs{\States}
+\abs{\Actions}$ constraints. Its dual has one variable $x(s, a) \geq 0$ per
+state-action pair, which can be interpreted as the discounted frequency of
+playing $a$ in $s$ (an \emph{occupancy measure}); optimal policies are read
+from the optimal dual solution as $\pi(a \mid s) \propto x(s, a)$. This
+dual view underlies several offline RL methods (\cref{ch:imitation}).
+
+\begin{remark}{Generalised policy iteration}{gpi}
+  Policy iteration and value iteration are two extremes of a common scheme,
+  \emph{generalised policy iteration}: a value function is pushed towards
+  the value of the current policy (evaluation), while the policy is pushed
+  towards greediness with respect to the value function (improvement). The
+  two processes compete (each changes the target of the other) and
+  cooperate (their only joint fixed point is optimal). All the algorithms of
+  the next chapters follow this pattern: Q-learning and DQN are
+  approximations of value iteration, actor-critic methods and PPO of
+  policy iteration.
+\end{remark}
+
+\section{Pacman solved exactly}
+\label{sec:dp-pacman}
+
+The full game is far too large for DP (\cref{sec:curse}), but a reduced
+version can be solved exactly, which shows what an optimal policy does.
+
+\begin{pacman}{Reaching the power cookie}{dp-escape}
+  On the maze \code{pacman\_map3} of game \code{v1}, Pacman and \emph{one}
+  ghost (aggressiveness $0.74$, chasing along shortest paths), no cookies.
+  Pacman must reach a power cookie in the bottom right corner of the maze:
+  reaching it gives $+10$ and ends the episode, being eaten gives $-35$,
+  and each move costs $0.15$, with $\gamma = 0.99$. Pacman moves first,
+  then the ghost. The state is the pair (Pacman's cell, ghost's cell):
+  $77 \times 77 = 5929$ states. The script \code{Course/code/dp\_escape.py}
+  builds the transition probabilities and solves the MDP.
+  \begin{itemize}[nosep]
+    \item Value iteration reaches $\norm{v_{k+1} - v_k}_\infty < 10^{-8}$
+      after $57$ sweeps; policy iteration stops after $11$ iterations, far
+      below the bound $5^{5929}$ of \cref{thm:pi-conv}. Both give the same
+      policy, and value functions that differ by $10^{-8}$.
+    \item The optimal policy reaches the power cookie \emph{from every
+      starting state} with probability $1$ (to $10^{-12}$). The policy that
+      follows a shortest path to the cookie, ignoring the ghost, succeeds
+      from only $67.9\%$ of the states on average.
+    \item From Pacman at $(5, 7)$ with the ghost at $(7, 12)$, between him
+      and the cookie, the shortest path succeeds with probability $0.004$.
+      The optimal policy succeeds with probability $1$, in $11.4$ moves on
+      average instead of the $10$ moves of the shortest path: it makes a
+      detour around the ghost. Its value is $v_\star = 7.39$.
+  \end{itemize}
+  The fact that the optimal success probability is $1$ everywhere is a
+  property of the maze: it has no dead ends, and a single ghost that moves
+  at Pacman's speed, after him, can never corner him. This is why the game
+  needs (at least) two ghosts.
+\end{pacman}
+
+The heart of the script is the Bellman backup and the value iteration
+loop; \code{T[k][a]} lists the triples (probability, reward, next state) of
+the transition from state \code{k} with action \code{a}, the next state
+being $-1$ for a terminal state.
+\begin{lstlisting}[caption={Value iteration (\code{Course/code/dp\_escape.py},
+  excerpt)}]
+def backup(v, k, a):
+    # r(s,a) + gamma * sum_s' p(s'|s,a) v(s'), terminal states worth 0
+    return sum(pr * (r + (GAMMA * v[s2] if s2 >= 0 else 0.0))
+               for pr, r, s2 in T[k][a])
+
+def value_iteration(tol=1e-8):
+    v = np.zeros(nS); it = 0
+    while True:
+        it += 1
+        new = np.array([max(backup(v, k, a) for a in range(nA))
+                        for k in range(nS)])      # v <- T* v
+        delta = np.max(np.abs(new - v)); v = new
+        if delta < tol:
+            return v, it
+\end{lstlisting}
+
+\section{The curse of dimensionality}
+\label{sec:curse}
+
+DP needs two things that are missing in practice.
+\begin{itemize}
+  \item \textbf{The model.} Each backup uses $p(s', r \mid s, a)$. For
+    Pacman, these probabilities could be derived from the code of the
+    ghosts, but in general the environment is a black box that can only be
+    sampled.
+  \item \textbf{A table of all states.} Each sweep visits every state.
+\end{itemize}
+
+\begin{pacman}{How many states?}{n-states}
+  In game \code{v1}, a state specifies Pacman's cell ($77$ choices), the
+  cell of each ghost or the fact that it was eaten ($78$ choices each),
+  which of the $77$ cells still hold a cookie (at most $2^{77}$ choices),
+  and the power credit ($13$ values). This gives at most
+  \begin{equation*}
+    77 \times 78^2 \times 2^{77} \times 13 \approx 9 \times 10^{29}
+  \end{equation*}
+  states. Most of these configurations cannot occur, but even a tiny
+  fraction of them is far beyond what a table can store: at one byte per
+  state, $10^{20}$ states would already require $100$ exabytes.
+\end{pacman}
+
+The two reduced games of this chapter illustrate the jump: one ghost and no
+cookies give $5929$ states, solved in seconds; adding the cookies
+multiplies the number of states by up to $2^{77}$. The way out, developed in
+the rest of the course, is twofold: \emph{learn from sampled experience}
+instead of the model (\cref{ch:td}), and \emph{generalise} between states
+with a parametrised function, a neural network reading the image of the
+board (\cref{ch:dqn}).

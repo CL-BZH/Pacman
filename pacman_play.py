@@ -187,8 +187,9 @@ def parse_args():
     parser.add_argument("-f", "--frames", type=int, default=2,
                         help="number of stacked frames (must match the training)")
     parser.add_argument("--greedy", action="store_true",
-                        help="always play the best action (by default the A2C agent samples its "
-                             "action from the policy once all ghosts are eaten)")
+                        help="always play the best action (by default, once all ghosts are eaten, "
+                             "the A2C agent samples its action from the policy and the DQN agent "
+                             "plays a random move with probability 0.05)")
     parser.add_argument("--display", action="store_true",
                         help="display the games even when several games are played")
     parser.add_argument("--wait", type=float, default=3.,
@@ -272,8 +273,10 @@ def make_player(args, checkpoint, quiet=False):
         stockastic = not args.greedy
     else:
         agent = DQN_PacmanAgent([env], n_frames=args.frames)
-        agent.epsilon = 0.
-        stockastic = False
+        # Once all ghosts are eaten, a few random moves (epsilon) keep the greedy policy from
+        # going round in circles (the moves are always greedy while ghosts are present)
+        agent.epsilon = 0.05
+        stockastic = not args.greedy
     try:
         agent.load(checkpoint)
     except RuntimeError:
