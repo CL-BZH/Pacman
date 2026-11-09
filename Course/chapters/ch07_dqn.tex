@@ -309,7 +309,7 @@ parametrisations are common.
 
 \begin{proposition}{Quantile regression}{quantile}
   Let $Z$ be a real random variable with a continuous distribution function
-  $F$, and $\rho_\tau(u) = u \left( \tau - \mathbb{1}[u < 0] \right)$ for
+  $F$, and $\rho_\tau(u) = u \left( \tau - \ind[u < 0] \right)$ for
   $\tau \in (0, 1)$. Then $\theta \mapsto \E[\rho_\tau(Z - \theta)]$ is
   convex and minimised at the $\tau$-quantile $F^{-1}(\tau)$.
 \end{proposition}
@@ -317,8 +317,8 @@ parametrisations are common.
 \begin{proof}
   $\rho_\tau$ is convex (it is piecewise linear with slopes $\tau - 1 < 0 <
   \tau$), hence so is the expectation. Its derivative with respect to
-  $\theta$ is $\E[-\tau\, \mathbb{1}[Z > \theta] + (1 - \tau)\,
-  \mathbb{1}[Z < \theta]] = -\tau (1 - F(\theta)) + (1 - \tau) F(\theta) =
+  $\theta$ is $\E[-\tau\, \ind[Z > \theta] + (1 - \tau)\,
+  \ind[Z < \theta]] = -\tau (1 - F(\theta)) + (1 - \tau) F(\theta) =
   F(\theta) - \tau$, which vanishes at $F(\theta) = \tau$.
 \end{proof}
 

@@ -271,16 +271,16 @@ track of these weights.
   If the updates of TD($\lambda$) are accumulated during an episode and
   applied at its end (offline updating), the total update of each state is
   that of the $\lambda$-return algorithm, $\alpha \sum_t (G_t^\lambda -
-  V(S_t))\, \mathbb{1}[S_t = s]$.
+  V(S_t))\, \ind[S_t = s]$.
 \end{proposition}
 
 \begin{proof}
   The trace at time $t$ is $e_t(s) = \sum_{k \leq t} (\gamma
-  \lambda)^{t-k} \mathbb{1}[S_k = s]$. Exchanging the sums,
+  \lambda)^{t-k} \ind[S_k = s]$. Exchanging the sums,
   \begin{equation*}
-    \sum_t \alpha\, \delta_t\, e_t(s) = \alpha \sum_k \mathbb{1}[S_k =
+    \sum_t \alpha\, \delta_t\, e_t(s) = \alpha \sum_k \ind[S_k =
     s] \sum_{t \geq k} (\gamma \lambda)^{t-k} \delta_t = \alpha \sum_k
-    \mathbb{1}[S_k = s] \left( G_k^\lambda - V(S_k) \right),
+    \ind[S_k = s] \left( G_k^\lambda - V(S_k) \right),
   \end{equation*}
   by \cref{lem:lambda-td}, $V$ being fixed during the episode.
 \end{proof}

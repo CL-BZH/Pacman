@@ -39,6 +39,53 @@ the UCB rule (\cref{ch:model-based}).
   $\mathcal{R}_T / T$ tends to $0$: the agent ends up playing the best arm.
 \end{intuition}
 
+\begin{remark}{The regret as an expected loss}{regret-loss}
+  Imagine that, before the game, nature draws a whole table of rewards:
+  for every round $t$ and every arm $a$, a reward $X_{a,t} \sim \nu_a$, all
+  independent. At round $t$ the agent receives the entry of the arm it
+  plays, $R_t = X_{A_t, t}$, and never sees the others. (This gives the
+  same game as \cref{def:bandit}.) Let $\star$ be a best arm. The loss of
+  round $t$ is $X_{\star, t} - X_{A_t, t}$, what the best arm would have
+  given minus what the agent got, and since $\E[X_{\star, t}] = \mu^\star$,
+  \begin{equation}
+    \mathcal{R}_T = \E\left[ \sum_{t=1}^{T} \left( X_{\star, t} - X_{A_t, t}
+    \right) \right]:
+  \end{equation}
+  the regret is the expected total loss with respect to the best arm.
+
+  The loss of one round can be negative: a bad arm sometimes gets lucky.
+  Its \emph{expected} value is not, for the following reason. The choice
+  of the agent at round $t$ is a function of the rewards it has received
+  so far and, for a randomised algorithm, of its own random numbers $U_t$:
+  \begin{equation*}
+    A_t = f_t(R_1, \dots, R_{t-1}, U_t).
+  \end{equation*}
+  The rewards $R_1, \dots, R_{t-1}$ are entries of the rows $1$ to $t - 1$
+  of the table, and the row $t$, $(X_{1, t}, \dots, X_{K, t})$, is
+  independent of these rows and of $U_t$. A function of variables that are
+  independent of row $t$ is itself independent of row $t$: $A_t$ is
+  independent of $(X_{1, t}, \dots, X_{K, t})$. Therefore conditioning on
+  $A_t = a$ does not change the distribution of $X_{a, t}$:
+  \begin{equation*}
+    \E\left[ X_{A_t, t} \mid A_t = a \right] = \E\left[ X_{a, t} \mid A_t =
+    a \right] = \E\left[ X_{a, t} \right] = \mu_a,
+  \end{equation*}
+  hence $\E[X_{\star, t} - X_{A_t, t} \mid A_t] = \mu^\star - \mu_{A_t} =
+  \Delta_{A_t} \geq 0$. Independence is essential: an agent that could peek
+  at the rewards of round $t$ before choosing, and play the arm with the
+  largest one, would get $\E[\max_a X_{a, t}]$ per round, more than
+  $\mu^\star$ as soon as another arm can beat the best one at some round,
+  and its ``regret'' would be negative. Summing the conditional expectations
+  over the rounds gives \cref{prop:regret-decomp}.
+
+  Finally, the comparison is with the best arm \emph{on average}, not with
+  the arm whose rewards happened to add up highest. The latter,
+  $\E[\max_a \sum_t X_{a, t}] - \E[\sum_t R_t]$, is larger, because a
+  maximum over random sums profits from luck; it is used in
+  \emph{adversarial} bandits, where the rewards are not drawn from fixed
+  distributions.
+\end{remark}
+
 \begin{proposition}{Regret decomposition}{regret-decomp}
   $\mathcal{R}_T = \sum_{a=1}^{K} \Delta_a\, \E\left[N_a(T)\right]$.
 \end{proposition}
@@ -153,10 +200,12 @@ eventually retried.
   rewards of arm $a$, and $\ell = \lceil 8 \ln T / \Delta_a^2 \rceil$.
   Arm $a$ is played at most $\ell$ times while $N_a < \ell$, so
   \begin{equation*}
-    N_a(T) \leq \ell + \sum_{t = K+1}^{T} \mathbb{1}\left[A_t = a,\
-    N_a(t-1) \geq \ell\right].
+    N_a(T) \leq \ell + \sum_{t = K+1}^{T} \ind\left[A_t = a,\
+    N_a(t-1) \geq \ell\right],
   \end{equation*}
-  If $A_t = a$, the index of $a$ is at least that of $\star$:
+  where $\ind[E]$ denotes the indicator of an event $E$: $1$ if $E$ occurs,
+  $0$ otherwise. Each round that plays $a$ after its first $\ell$ plays adds
+  $1$ to the sum. If $A_t = a$, the index of $a$ is at least that of $\star$:
   $\hat\mu_{\star, s} + c_{t, s} \leq \hat\mu_{a, s_a} + c_{t, s_a}$
   for the current counts $s = N_\star(t-1)$ and $s_a = N_a(t-1) \geq
   \ell$. This inequality implies one of the three events
@@ -287,7 +336,7 @@ policy $\pi(a) = e^{H(a)} / \sum_b e^{H(b)}$. After playing $A_t$ and
 receiving $R_t$, the \emph{gradient bandit} algorithm updates
 \begin{equation}
   \label{eq:gradient-bandit}
-  H(b) \gets H(b) + \alpha (R_t - \bar R_t) \left( \mathbb{1}[b = A_t] -
+  H(b) \gets H(b) + \alpha (R_t - \bar R_t) \left( \ind[b = A_t] -
   \pi(b) \right) \qquad \text{for every arm } b,
 \end{equation}
 where $\bar R_t$ is a \emph{baseline}, for example the average of the past
@@ -310,16 +359,16 @@ rewards.
 
 \begin{proof}
   By \cref{prop:softmax-score} (proved in \cref{ch:pg}),
-  $\partial \pi(a) / \partial H(b) = \pi(a) (\mathbb{1}[a = b] - \pi(b))$.
+  $\partial \pi(a) / \partial H(b) = \pi(a) (\ind[a = b] - \pi(b))$.
   Hence
   \begin{equation*}
     \frac{\partial J}{\partial H(b)} = \sum_a \mu_a\, \pi(a) \left(
-    \mathbb{1}[a = b] - \pi(b) \right)
-    = \E\left[ \mu_{A_t} \left( \mathbb{1}[A_t = b] - \pi(b) \right)
+    \ind[a = b] - \pi(b) \right)
+    = \E\left[ \mu_{A_t} \left( \ind[A_t = b] - \pi(b) \right)
     \right].
   \end{equation*}
   Given $A_t$, $\E[R_t] = \mu_{A_t}$, and the baseline term has mean zero:
-  $\E[\mathbb{1}[A_t = b] - \pi(b)] = \pi(b) - \pi(b) = 0$.
+  $\E[\ind[A_t = b] - \pi(b)] = \pi(b) - \pi(b) = 0$.
 \end{proof}
 
 This is the one-state case of the policy gradient theorem

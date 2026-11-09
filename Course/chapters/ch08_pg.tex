@@ -29,8 +29,8 @@ by itself in the states where it is uncertain.
 
 \begin{proof}
   $\log \pi_\theta(a \mid s) = z(s, a) - \log \sum_b \exp z(s, b)$, whose
-  derivative with respect to $z(s, c)$ is $\mathbb{1}[c = a] - \exp z(s,
-  c) / \sum_b \exp z(s, b) = \mathbb{1}[c = a] - \pi_\theta(c \mid s)$.
+  derivative with respect to $z(s, c)$ is $\ind[c = a] - \exp z(s,
+  c) / \sum_b \exp z(s, b) = \ind[c = a] - \pi_\theta(c \mid s)$.
 \end{proof}
 
 Increasing $\log \pi_\theta(a \mid s)$ thus raises the logit of $a$ and

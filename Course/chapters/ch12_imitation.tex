@@ -266,7 +266,7 @@ exactly the actions whose values cannot be trusted.
 evaluates $Q$ at actions outside the data. It fits $V(s)$ to an upper
 expectile of $Q(s, a)$ over the actions of the data, minimising
 $\E_{(s, a) \sim \mathcal{D}}[L_\tau(Q(s, a) - V(s))]$ with $L_\tau(u) =
-\abs{\tau - \mathbb{1}(u < 0)}\, u^2$ and $\tau \approx 0.7$--$0.9$, which
+\abs{\tau - \ind(u < 0)}\, u^2$ and $\tau \approx 0.7$--$0.9$, which
 approximates a maximum over the actions supported by the data; $Q$ is
 fitted to $r + \gamma V(s')$; and the policy is extracted by
 advantage-weighted regression, maximising $\E_{\mathcal{D}}[e^{b (Q(s, a) -
