@@ -91,10 +91,24 @@ the UCB rule (\cref{ch:model-based}).
 \end{proposition}
 
 \begin{proof}
-  Given $A_t$, the expected reward is $\mu_{A_t}$, so $\E[\sum_t R_t] =
-  \E[\sum_t \mu_{A_t}] = \E[\sum_a \mu_a N_a(T)]$. Since $\sum_a N_a(T) =
-  T$, $T \mu^\star - \sum_a \mu_a N_a(T) = \sum_a (\mu^\star - \mu_a)
-  N_a(T)$; take expectations.
+  The arm $A_t$ is random, so $\mu_{A_t}$ is a random variable. Given $A_t$,
+  the expected reward is $\E[R_t \mid A_t] = \mu_{A_t}$
+  (\cref{rem:regret-loss}), and by the tower property $\E[R_t] =
+  \E[\E[R_t \mid A_t]] = \E[\mu_{A_t}]$. Next, grouping the rounds by the
+  arm played gives, for every realisation of the game,
+  \begin{equation*}
+    \sum_{t=1}^{T} \mu_{A_t} = \sum_{a=1}^{K} \mu_a N_a(T),
+  \end{equation*}
+  an identity between random variables (the counts $N_a(T)$ are random).
+  Hence
+  \begin{equation*}
+    \E\left[\sum_{t=1}^{T} R_t\right] = \sum_{t=1}^{T} \E[\mu_{A_t}] =
+    \E\left[\sum_{a=1}^{K} \mu_a N_a(T)\right] = \sum_{a=1}^{K} \mu_a\,
+    \E[N_a(T)].
+  \end{equation*}
+  Finally $\sum_a N_a(T) = T$, so $T \mu^\star = \sum_a \mu^\star\,
+  \E[N_a(T)]$, and $\mathcal{R}_T = \sum_a (\mu^\star - \mu_a)\,
+  \E[N_a(T)] = \sum_a \Delta_a\, \E[N_a(T)]$.
 \end{proof}
 
 \begin{intuition}
