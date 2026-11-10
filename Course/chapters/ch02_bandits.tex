@@ -138,8 +138,56 @@ sample mean $\hat\mu_a$ of its rewards, which can be updated incrementally
 The \emph{greedy} algorithm plays each arm once, then always the arm of
 largest $\hat\mu_a$. If the best arm happens to give a bad first reward, it
 may never be played again: the regret grows linearly with $T$ with positive
-probability. The \emph{$\varepsilon$-greedy} algorithm plays a uniformly
-random arm with probability $\varepsilon$ and the greedy arm otherwise.
+probability. The cure is to keep trying the other arms now and then.
+
+The \emph{$\varepsilon$-greedy} algorithm does this with a fixed
+probability $\varepsilon \in [0, 1]$. At each round it flips a biased coin
+that comes up heads with probability $\varepsilon$:
+\begin{itemize}[nosep]
+  \item heads, it \emph{explores}: it plays an arm drawn uniformly at random
+    among the $K$ arms, each with probability $1/K$, whatever their
+    estimates;
+  \item tails, it \emph{exploits}: it plays the \emph{greedy arm}, the arm
+    whose current estimate $\hat\mu_a$ is the largest (ties broken at
+    random).
+\end{itemize}
+
+\begin{algobox}{$\varepsilon$-greedy}
+  \begin{algorithmic}[1]
+    \State play each arm once; $N_a \gets 1$, $\hat\mu_a \gets$ its reward
+    \For{$t = K + 1, \dots, T$}
+      \If{$U_t < \varepsilon$, with $U_t$ uniform on $[0, 1]$}
+        \State $A_t \gets$ an arm drawn uniformly among the $K$ arms
+          \Comment{explore}
+      \Else
+        \State $A_t \gets \argmax_a \hat\mu_a$
+          \Comment{exploit}
+      \EndIf
+      \State play $A_t$, observe $R_t$
+      \State $N_{A_t} \gets N_{A_t} + 1$;\quad $\hat\mu_{A_t} \gets
+        \hat\mu_{A_t} + \frac{1}{N_{A_t}} (R_t - \hat\mu_{A_t})$
+    \EndFor
+  \end{algorithmic}
+\end{algobox}
+
+The random draw of the exploring round may fall on the greedy arm too, so
+the greedy arm is played with probability $1 - \varepsilon + \varepsilon /
+K$ and each other arm with probability $\varepsilon / K$. With $\varepsilon
+= 0.1$ and $K = 10$, for example: the greedy arm $91\%$ of the time, each
+other arm $1\%$. With $\varepsilon = 0$ the algorithm is the greedy
+algorithm, and with $\varepsilon = 1$ it plays at random.
+
+\begin{intuition}
+  Exploration guarantees that every arm keeps being played, about
+  $\varepsilon T / K$ times in $T$ rounds, so every estimate $\hat\mu_a$
+  converges to $\mu_a$ by the law of large numbers, and the greedy arm ends
+  up being the best one: unlike the greedy algorithm, $\varepsilon$-greedy
+  cannot stay stuck on a bad arm forever. The price is that exploration
+  never stops: even when the best arm is known for sure, a fraction
+  $\varepsilon$ of the rounds is still spent on random arms. The same rule
+  chooses the moves of the DQN agent of \cref{ch:dqn}, with an
+  $\varepsilon$ that decreases during the training.
+\end{intuition}
 
 \begin{proposition}{Constant exploration has linear regret}{eps-linear}
   With a constant $\varepsilon > 0$, the regret of $\varepsilon$-greedy
