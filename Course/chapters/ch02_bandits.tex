@@ -115,9 +115,11 @@ the UCB rule (\cref{ch:model-based}).
     \E\left[\sum_{a=1}^{K} \mu_a N_a(T)\right] = \sum_{a=1}^{K} \mu_a\,
     \E[N_a(T)].
   \end{equation*}
-  Finally $\sum_a N_a(T) = T$, so $T \mu^\star = \sum_a \mu^\star\,
-  \E[N_a(T)]$, and $\mathcal{R}_T = \sum_a (\mu^\star - \mu_a)\,
-  \E[N_a(T)] = \sum_a \Delta_a\, \E[N_a(T)]$.
+  Finally $\sum_a N_a(T) = T$ for every realisation (each round plays
+  exactly one arm), so by linearity $\sum_a \E[N_a(T)] = \E[\sum_a N_a(T)]
+  = T$ and $T \mu^\star = \sum_a \mu^\star\, \E[N_a(T)]$; therefore
+  $\mathcal{R}_T = \sum_a (\mu^\star - \mu_a)\, \E[N_a(T)] = \sum_a
+  \Delta_a\, \E[N_a(T)]$.
 \end{proof}
 
 \begin{intuition}
