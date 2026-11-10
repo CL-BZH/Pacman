@@ -209,9 +209,36 @@ explored more.
 
 \section{Upper confidence bounds}
 
-The principle of \emph{optimism in the face of uncertainty}: play the arm
-whose mean \emph{could} be the largest, given the data. It relies on a
-concentration inequality.
+\subsection{Optimism in the face of uncertainty}
+
+The two previous algorithms fail in opposite ways. Greedy trusts its
+estimates too much: an arm that started badly is never tried again, even
+though one or two rewards say almost nothing about its mean.
+$\varepsilon$-greedy explores, but blindly: it spends the same effort on an
+arm that is clearly bad after thousands of plays as on an arm that has been
+tried only twice. What is missing is a measure of how \emph{uncertain}
+each estimate is.
+
+Think of choosing a restaurant. One restaurant you have visited fifty
+times: you know it is good, not great. Another you have visited once, and
+the meal was disappointing. Should you give it a second chance? One meal
+says little, so the new restaurant \emph{might} still be better. The
+principle of \emph{optimism in the face of uncertainty} says: for each arm,
+consider the best mean that is still plausible given what you have seen,
+and play the arm for which it is largest. Two things can happen:
+\begin{itemize}[nosep]
+  \item the optimism was justified: the arm really is good, and playing it
+    was the right decision;
+  \item the optimism was not justified: the arm is worse than hoped, but
+    playing it brought a new reward, its estimate becomes more precise, and
+    the room for optimism shrinks; after a few such plays the arm is no
+    longer the most promising one.
+\end{itemize}
+Either way the agent gains: a good reward, or information. Turning this
+idea into an algorithm requires one ingredient: a precise statement of how
+far a sample mean can be from the true mean, the ``plausible'' range.
+
+\subsection{How far can an estimate be from the truth?}
 
 \begin{lemma}{Hoeffding's inequality (stated without proof)}{hoeffding}
   Let $X_1, \dots, X_n$ be independent random variables with values in
@@ -223,6 +250,28 @@ concentration inequality.
   \end{equation}
 \end{lemma}
 
+The first inequality bounds the probability that the sample mean
+\emph{overestimates} the true mean by more than $c$; the second, that it
+underestimates it by more than $c$. Some numbers: with $n = 100$ rewards
+and $c = 0.1$, each probability is at most $e^{-2} \approx 0.14$; with $n =
+400$ rewards, at most $e^{-8} \approx 0.0003$. Four times more data make a
+deviation of $0.1$ about $400$ times less likely.
+
+The inequality can be read the other way round, which is how it is used. Fix
+a small probability $\delta$ of being wrong and solve $e^{-2 n c^2} =
+\delta$ for $c$:
+\begin{equation}
+  \label{eq:hoeffding-ci}
+  c = \sqrt{\frac{\ln(1/\delta)}{2n}}, \qquad\text{so that}\qquad
+  \Prob\left(\mu > \bar X_n + c\right) = \Prob\left(\bar X_n < \mu -
+  c\right) \leq \delta.
+\end{equation}
+With probability at least $1 - \delta$, the true mean is below $\bar X_n +
+c$: this is an \emph{upper confidence bound} on $\mu$. For example, with
+$\delta = 0.05$ and $n = 100$ rewards, $c = \sqrt{\ln 20 / 200} \approx
+0.12$: after $100$ rewards with average $0.6$, the true mean is below $0.72$
+with probability at least $95\%$.
+
 \begin{intuition}
   A sample mean rarely strays far from the true mean, and the probability
   of a deviation $c$ falls exponentially in $n c^2$. Turned around: with
@@ -231,6 +280,17 @@ concentration inequality.
   typical: four times more data halve the uncertainty. The lemma gives an
   error bar around each estimate.
 \end{intuition}
+
+\subsection{The UCB1 algorithm}
+
+UCB1 plays the arm with the largest upper confidence bound. Two choices
+remain: the number $n$ of rewards is the number of plays $N_a(t-1)$ of the
+arm so far, and the probability $\delta$ of being wrong must shrink as the
+game goes on, otherwise a constant fraction of the decisions would rest on
+wrong bounds. UCB1 takes $\delta = t^{-4}$ at round $t$ (why the exponent
+$4$ will appear in the proof). Then $\ln(1/\delta) = 4 \ln t$, and
+\eqref{eq:hoeffding-ci} gives the bonus $c = \sqrt{4 \ln t / (2 N_a(t-1))}
+= \sqrt{2 \ln t / N_a(t-1)}$.
 
 \begin{definition}{UCB1}{ucb1}
   For rewards in $[0, 1]$, UCB1 (Auer, Cesa-Bianchi and Fischer, 2002)
@@ -241,9 +301,52 @@ concentration inequality.
   \end{equation}
 \end{definition}
 
-The bonus is large for arms played rarely, and decreases as their estimate
-becomes reliable; the slow growth of $\ln t$ ensures that every arm is
-eventually retried.
+The index has two parts. The estimate $\hat\mu_a$ favours the arms that
+have done well (exploitation). The \emph{bonus} $\sqrt{2 \ln t / N_a(t-1)}$
+favours the arms that have been played little (exploration): it is large
+for an arm played rarely, and shrinks like $1/\sqrt{N_a}$ as the arm is
+played. For an arm that is \emph{not} played, the bonus grows slowly,
+because $\ln t$ increases with time: every arm is eventually retried, but
+more and more rarely.
+
+\begin{figure}[ht]
+  \centering
+  \begin{tikzpicture}[x=3.2cm, y=5cm]
+    \draw[->] (0.4, 0) -- (3.6, 0);
+    \draw[->] (0.4, 0) -- (0.4, 1.1) node[above] {mean};
+    \foreach \y in {0, 0.2, 0.4, 0.6, 0.8, 1}
+      \draw (0.38, \y) -- (0.42, \y) node[left=2pt] {\small $\y$};
+    \foreach \x/\m/\b/\n in {1/0.60/0.131/800, 2/0.45/0.303/150,
+                             3/0.30/0.526/50} {
+      \draw[thick, gray] (\x, {max(\m - \b, 0)}) -- (\x, \m + \b);
+      \draw[thick, gray] (\x - 0.08, \m + \b) -- (\x + 0.08, \m + \b);
+      \fill (\x, \m) circle (1.6pt);
+      \node[below, align=center] at (\x, 0) {\small arm \x\\ \small $N = \n$};
+    }
+    \node[right] at (1.08, 0.60) {\small $\hat\mu = 0.60$};
+    \node[right] at (1.08, 0.731) {\small index $0.73$};
+    \node[right] at (2.08, 0.45) {\small $\hat\mu = 0.45$};
+    \node[right] at (2.08, 0.753) {\small index $0.75$};
+    \node[right] at (3.08, 0.30) {\small $\hat\mu = 0.30$};
+    \node[right] at (3.08, 0.826) {\small index $0.83$};
+  \end{tikzpicture}
+  \caption{UCB1 at round $t = 1000$ with three arms. The dot is the
+    estimate $\hat\mu_a$, the bar extends it by the bonus $\sqrt{2 \ln t /
+    N_a}$ (and the same amount below). Arm 3 has the lowest estimate but has
+    been played only $50$ times: its index is the largest, and UCB1 plays
+    it.}
+  \label{fig:ucb1}
+\end{figure}
+
+\Cref{fig:ucb1} shows a typical situation at round $t = 1000$, where $2
+\ln t \approx 13.8$. Arm 1 has the best estimate, $0.60$, and has been
+played $800$ times: its bonus is $\sqrt{13.8/800} \approx 0.13$ and its
+index $0.73$. Arm 3 has the worst estimate, $0.30$, but only $50$ plays: its
+bonus is $\sqrt{13.8/50} \approx 0.53$ and its index $0.83$. UCB1 plays arm
+3. If arm 3 is really bad, its next rewards keep its estimate low while its
+bonus shrinks, and after a few more plays its index falls below that of arm
+1. If arm 3 was only unlucky at the start, its estimate rises and it
+deserves to be played.
 
 \begin{intuition}
   The index of an arm is the most optimistic mean that is still plausible
@@ -256,6 +359,19 @@ eventually retried.
   is. Exploration stops by itself where it is no longer needed.
 \end{intuition}
 
+\subsection{How often does UCB1 play a bad arm?}
+
+By \cref{prop:regret-decomp}, the regret is controlled by the number of
+plays $\E[N_a(T)]$ of each suboptimal arm. The following theorem says that
+UCB1 plays an arm of gap $\Delta_a$ about $8 \ln T / \Delta_a^2$ times at
+most. For example, with $\Delta_a = 0.1$ and $T = 10^6$ rounds, this is
+about $11\,000$ plays, roughly $1\%$ of the game, and doubling the length
+of the game adds only $8 \ln 2 / \Delta_a^2 \approx 550$ plays: the bad arm
+is played more and more rarely. Compare with $\varepsilon$-greedy, which
+with $\varepsilon = 0.1$ and $K = 10$ arms plays it $1\%$ of the time
+\emph{forever}, that is $10\,000$ times in $10^6$ rounds but $20\,000$ in
+$2 \times 10^6$.
+
 \begin{theorem}{Regret of UCB1}{ucb-regret}
   For rewards in $[0, 1]$ and every suboptimal arm $a$ ($\Delta_a > 0$),
   \begin{equation}
@@ -267,40 +383,100 @@ eventually retried.
   \end{equation}
 \end{theorem}
 
+\paragraph{The idea of the proof.} When UCB1 plays a suboptimal arm $a$
+instead of a best arm $\star$, the index of $a$ was at least the index of
+$\star$. After enough plays of $a$, this can only happen if something went
+wrong:
+\begin{itemize}[nosep]
+  \item the index of $\star$ was too low: its estimate fell below its true
+    mean by more than its bonus (event E1), or
+  \item the estimate of $a$ was too high: it exceeded its true mean by more
+    than its bonus (event E2).
+\end{itemize}
+A third possibility, that $a$ has been played so little that its bonus
+still covers the gap (event E3), is ruled out by counting only the plays
+after the first $\ell \approx 8 \ln T / \Delta_a^2$. Hoeffding's inequality
+makes E1 and E2 very unlikely, and summing their probabilities over the
+rounds gives a constant. The proof needs one more remark. Hoeffding's
+inequality is about a \emph{fixed} number $n$ of rewards, but the number of
+plays of an arm at round $t$ is random. It is convenient to imagine that
+the rewards of each arm are drawn in advance as a stack: $Y_{a, 1}, Y_{a,
+2}, \dots$ independent with distribution $\nu_a$, the $s$-th play of arm $a$
+revealing $Y_{a, s}$. This gives the same game as the table of
+\cref{rem:regret-loss}, and the mean $\hat\mu_{a, s}$ of the first $s$
+rewards of arm $a$ is then the mean of $s$ independent rewards, to which
+Hoeffding's inequality applies for each fixed $s$. The random counts are
+handled by considering all their possible values.
+
 \begin{proof}
   Fix a suboptimal arm $a$ and an optimal arm $\star$. Let $c_{t, s} =
-  \sqrt{2 \ln t / s}$, let $\hat\mu_{a, s}$ be the mean of the first $s$
-  rewards of arm $a$, and $\ell = \lceil 8 \ln T / \Delta_a^2 \rceil$.
-  Arm $a$ is played at most $\ell$ times while $N_a < \ell$, so
+  \sqrt{2 \ln t / s}$ be the bonus of an arm played $s$ times at round
+  $t$, let $\hat\mu_{a, s}$ be the mean of the first $s$ rewards of arm
+  $a$, and $\ell = \lceil 8 \ln T / \Delta_a^2 \rceil$.
+
+  \emph{Step 1: count the plays after the first $\ell$.} Arm $a$ can be
+  played at most $\ell$ times while $N_a < \ell$; every later play is a
+  round $t$ where $A_t = a$ and $N_a(t-1) \geq \ell$. Hence
   \begin{equation*}
     N_a(T) \leq \ell + \sum_{t = K+1}^{T} \ind\left[A_t = a,\
     N_a(t-1) \geq \ell\right],
   \end{equation*}
   where $\ind[E]$ denotes the indicator of an event $E$: $1$ if $E$ occurs,
   $0$ otherwise. Each round that plays $a$ after its first $\ell$ plays adds
-  $1$ to the sum. If $A_t = a$, the index of $a$ is at least that of $\star$:
-  $\hat\mu_{\star, s} + c_{t, s} \leq \hat\mu_{a, s_a} + c_{t, s_a}$
-  for the current counts $s = N_\star(t-1)$ and $s_a = N_a(t-1) \geq
-  \ell$. This inequality implies one of the three events
+  $1$ to the sum.
+
+  \emph{Step 2: when $a$ is played, something went wrong.} If $A_t = a$,
+  the index of $a$ is at least that of $\star$:
+  \begin{equation*}
+    \hat\mu_{\star, s} + c_{t, s} \leq \hat\mu_{a, s_a} + c_{t, s_a}
+  \end{equation*}
+  for the current counts $s = N_\star(t-1)$ and $s_a = N_a(t-1)$. This
+  inequality implies one of the three events
   \begin{equation*}
     \text{(E1) } \hat\mu_{\star, s} \leq \mu^\star - c_{t, s}, \qquad
     \text{(E2) } \hat\mu_{a, s_a} \geq \mu_a + c_{t, s_a}, \qquad
-    \text{(E3) } \mu^\star < \mu_a + 2 c_{t, s_a},
+    \text{(E3) } \mu^\star < \mu_a + 2 c_{t, s_a}.
   \end{equation*}
-  for if none holds, $\hat\mu_{\star, s} + c_{t, s} > \mu^\star \geq
-  \mu_a + 2 c_{t, s_a} > \hat\mu_{a, s_a} + c_{t, s_a}$. Event (E3) is
-  impossible: $t \leq T$ and $s_a \geq \ell \geq 8 \ln T / \Delta_a^2$
-  give $2 c_{t, s_a} \leq 2 \sqrt{2 \ln T \cdot \Delta_a^2 / (8 \ln T)}
-  = \Delta_a$. By Hoeffding's inequality, for fixed $s$ and $s_a$, (E1) and
-  (E2) have probability at most $e^{-2 s \cdot 2 \ln t / s} = t^{-4}$.
-  Since the counts are random, we take a union bound over their possible
-  values $1 \leq s, s_a \leq t$:
+  Indeed, suppose none of them holds. Not (E1) gives $\hat\mu_{\star, s} +
+  c_{t, s} > \mu^\star$; not (E3) gives $\mu^\star \geq \mu_a + 2 c_{t,
+  s_a}$; not (E2) gives $\mu_a + c_{t, s_a} > \hat\mu_{a, s_a}$, hence $\mu_a
+  + 2 c_{t, s_a} > \hat\mu_{a, s_a} + c_{t, s_a}$. Chaining the three,
+  $\hat\mu_{\star, s} + c_{t, s} > \hat\mu_{a, s_a} + c_{t, s_a}$: the index
+  of $\star$ would be larger, and $a$ would not be played.
+
+  \emph{Step 3: (E3) cannot happen after $\ell$ plays.} If $s_a \geq \ell
+  \geq 8 \ln T / \Delta_a^2$ and $t \leq T$,
+  \begin{equation*}
+    2 c_{t, s_a} = 2 \sqrt{\frac{2 \ln t}{s_a}} \leq 2 \sqrt{\frac{2 \ln T
+    \cdot \Delta_a^2}{8 \ln T}} = \Delta_a = \mu^\star - \mu_a,
+  \end{equation*}
+  which contradicts (E3). This is where the choice of $\ell$ comes from:
+  after $\ell$ plays, the error bar of $a$ is narrower than half the gap.
+
+  \emph{Step 4: (E1) and (E2) are rare.} For fixed $s$, Hoeffding's
+  inequality with $c = c_{t, s}$ gives
+  \begin{equation*}
+    \Prob(\text{E1}) \leq e^{-2 s\, c_{t, s}^2} = e^{-2 s \cdot 2 \ln t / s} =
+    e^{-4 \ln t} = t^{-4},
+  \end{equation*}
+  and likewise $\Prob(\text{E2}) \leq t^{-4}$ for fixed $s_a$.
+
+  \emph{Step 5: sum over the rounds and the possible counts.} The counts $s$
+  and $s_a$ at round $t$ are random, but they lie between $1$ and $t$. The
+  event ``$A_t = a$ and $N_a(t-1) \geq \ell$'' is therefore contained in the
+  union, over all the values $1 \leq s, s_a \leq t$, of the events (E1) or
+  (E2) for these values, and its probability is at most the sum of their
+  probabilities (union bound): $t^2$ pairs of values, each contributing at
+  most $2 t^{-4}$. Taking expectations in Step 1,
   \begin{equation*}
     \E[N_a(T)] \leq \ell + \sum_{t=K+1}^{T} \sum_{s=1}^{t}
     \sum_{s_a=1}^{t} 2\, t^{-4}
     \leq \ell + 2 \sum_{t \geq 1} t^{-2} = \ell + \frac{\pi^2}{3},
   \end{equation*}
-  and $\ell \leq 8 \ln T / \Delta_a^2 + 1$. The regret bound follows from
+  using $\sum_{t \geq 1} t^{-2} = \pi^2 / 6$. This is why the bonus uses
+  $\delta = t^{-4}$: the $t^2$ possible values of the counts cost a factor
+  $t^2$, and $t^{-2}$ is still summable. Finally $\ell \leq 8 \ln T /
+  \Delta_a^2 + 1$, and the regret bound follows from
   \cref{prop:regret-decomp}.
 \end{proof}
 
