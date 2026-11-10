@@ -39,6 +39,15 @@ the UCB rule (\cref{ch:model-based}).
   $\mathcal{R}_T / T$ tends to $0$: the agent ends up playing the best arm.
 \end{intuition}
 
+\paragraph{A word on notation.} $N_a(t)$ is the value at time $t$ of the
+counting function $N_a$ of arm $a$, not a product: $N_a(t - 1)$ reads ``the
+number of plays of arm $a$ in the first $t - 1$ rounds'', not $N_a \times
+(t - 1)$. It is a random variable, since the plays depend on the rewards
+received. At round $t$, before the agent chooses, rounds $1$ to $t - 1$ have
+been played, so the count it knows is $N_a(t - 1)$; if it then plays $a$,
+$N_a(t) = N_a(t - 1) + 1$. The same convention is used for the other
+quantities that change over time.
+
 \begin{remark}{The regret as an expected loss}{regret-loss}
   Imagine that, before the game, nature draws a whole table of rewards:
   for every round $t$ and every arm $a$, a reward $X_{a,t} \sim \nu_a$, all
@@ -156,6 +165,7 @@ that comes up heads with probability $\varepsilon$:
   \begin{algorithmic}[1]
     \State play each arm once; $N_a \gets 1$, $\hat\mu_a \gets$ its reward
     \For{$t = K + 1, \dots, T$}
+      \Comment{here $N_a = N_a(t-1)$}
       \If{$U_t < \varepsilon$, with $U_t$ uniform on $[0, 1]$}
         \State $A_t \gets$ an arm drawn uniformly among the $K$ arms
           \Comment{explore}
@@ -284,8 +294,10 @@ with probability at least $95\%$.
 \subsection{The UCB1 algorithm}
 
 UCB1 plays the arm with the largest upper confidence bound. Two choices
-remain: the number $n$ of rewards is the number of plays $N_a(t-1)$ of the
-arm so far, and the probability $\delta$ of being wrong must shrink as the
+remain: the number $n$ of rewards is the number of plays of the arm so far,
+$N_a(t-1)$ (at round $t$, before choosing, the rounds $1$ to $t - 1$ have
+been played, and $N_a(t)$ counts the plays in the first $t$ rounds), and
+the probability $\delta$ of being wrong must shrink as the
 game goes on, otherwise a constant fraction of the decisions would rest on
 wrong bounds. UCB1 takes $\delta = t^{-4}$ at round $t$ (why the exponent
 $4$ will appear in the proof). Then $\ln(1/\delta) = 4 \ln t$, and
@@ -304,8 +316,8 @@ $4$ will appear in the proof). Then $\ln(1/\delta) = 4 \ln t$, and
 The index has two parts. The estimate $\hat\mu_a$ favours the arms that
 have done well (exploitation). The \emph{bonus} $\sqrt{2 \ln t / N_a(t-1)}$
 favours the arms that have been played little (exploration): it is large
-for an arm played rarely, and shrinks like $1/\sqrt{N_a}$ as the arm is
-played. For an arm that is \emph{not} played, the bonus grows slowly,
+for an arm played rarely, and shrinks like $1/\sqrt{N_a(t-1)}$ as the arm
+is played. For an arm that is \emph{not} played, the bonus grows slowly,
 because $\ln t$ increases with time: every arm is eventually retried, but
 more and more rarely.
 
@@ -332,7 +344,9 @@ more and more rarely.
   \end{tikzpicture}
   \caption{UCB1 at round $t = 1000$ with three arms. The dot is the
     estimate $\hat\mu_a$, the bar extends it by the bonus $\sqrt{2 \ln t /
-    N_a}$ (and the same amount below). Arm 3 has the lowest estimate but has
+    N_a(t-1)}$ (and the same amount below), where $N = N_a(t-1)$ is the
+    number of plays of the arm before round $t$. Arm 3 has the lowest
+    estimate but has
     been played only $50$ times: its index is the largest, and UCB1 plays
     it.}
   \label{fig:ucb1}
@@ -415,7 +429,7 @@ handled by considering all their possible values.
   $a$, and $\ell = \lceil 8 \ln T / \Delta_a^2 \rceil$.
 
   \emph{Step 1: count the plays after the first $\ell$.} Arm $a$ can be
-  played at most $\ell$ times while $N_a < \ell$; every later play is a
+  played at most $\ell$ times while $N_a(t-1) < \ell$; every later play is a
   round $t$ where $A_t = a$ and $N_a(t-1) \geq \ell$. Hence
   \begin{equation*}
     N_a(T) \leq \ell + \sum_{t = K+1}^{T} \ind\left[A_t = a,\
