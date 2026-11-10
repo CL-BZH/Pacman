@@ -428,16 +428,32 @@ handled by considering all their possible values.
   $t$, let $\hat\mu_{a, s}$ be the mean of the first $s$ rewards of arm
   $a$, and $\ell = \lceil 8 \ln T / \Delta_a^2 \rceil$.
 
-  \emph{Step 1: count the plays after the first $\ell$.} Arm $a$ can be
-  played at most $\ell$ times while $N_a(t-1) < \ell$; every later play is a
-  round $t$ where $A_t = a$ and $N_a(t-1) \geq \ell$. Hence
+  \emph{Step 1: count the plays after the first $\ell$.} Early on, arm $a$
+  has been played little, its bonus is large, and UCB1 may rightly play it:
+  nothing can be proved about these plays, so we simply count them. Each
+  play of $a$ at a round $t$ is either one of its first $\ell$ plays, if
+  $N_a(t-1) < \ell$, or a later one, if $N_a(t-1) \geq \ell$:
+  \begin{equation*}
+    \ind[A_t = a] = \ind\left[A_t = a,\ N_a(t-1) < \ell\right] +
+    \ind\left[A_t = a,\ N_a(t-1) \geq \ell\right].
+  \end{equation*}
+  Summed over the rounds, the first terms count the plays of $a$ that are
+  among its first $\ell$, so at most $\ell$ of them are $1$. Hence
   \begin{equation*}
     N_a(T) \leq \ell + \sum_{t = K+1}^{T} \ind\left[A_t = a,\
     N_a(t-1) \geq \ell\right],
   \end{equation*}
   where $\ind[E]$ denotes the indicator of an event $E$: $1$ if $E$ occurs,
   $0$ otherwise. Each round that plays $a$ after its first $\ell$ plays adds
-  $1$ to the sum.
+  $1$ to the sum. The sum starts at round $K + 1$ because the first $K$
+  rounds play each of the $K$ arms once, before the index is used (and in
+  those rounds $N_a(t-1) = 0 < \ell$, so their terms would be $0$ anyway).
+  $K$, the number of arms, and $\ell$, the number of plays after which the
+  bonus of $a$ is small enough, are unrelated. The condition $N_a(t-1)
+  \geq \ell$ in the indicator is what the rest of the proof needs: it
+  guarantees that the bonus of $a$ is already smaller than half the gap
+  (Step 3), so that a play of $a$ can only be due to a rare estimation
+  error (Steps 2 and 4).
 
   \emph{Step 2: when $a$ is played, something went wrong.} If $A_t = a$,
   the index of $a$ is at least that of $\star$:
