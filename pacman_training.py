@@ -111,8 +111,8 @@ def dqn_training(state_dict=None, total_steps=5_000_000, game="v1"):
     n_envs = 16           # environments stepped in lockstep (batched forward pass)
     n_frames = 2          # 2 stacked frames: lets the network see in which direction the ghosts move
     
-    initial_lr = 2.5e-4
-    min_lr = 5e-5         # linear decay of the learning rate down to min_lr
+    initial_lr = 1e-4     # (2.5e-4 made the training collapse when exploration ended)
+    min_lr = 2.5e-5       # linear decay of the learning rate down to min_lr
     tau = 0.005           # Polyak averaging for the target network
     n_step = 3            # n-step returns
     batch_size = 128

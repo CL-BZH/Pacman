@@ -220,22 +220,34 @@ Without a local GPU, the notebooks `./Tools/train_kaggle.ipynb` and `./Tools/tra
 train the A2C/PPO or the DQN agent on a free Kaggle or Google Colab GPU, save checkpoints
 regularly, and can resume a previous training.
 
-**Results (game v1).** The agent `Trainings/DQN/pacman_dqn_final.pth` was trained on a Kaggle GPU
-in two sessions. The first one (60M steps, learning rate decreasing from 2.5e-4 to 5e-5) won no
-game for 55M steps and only took off at the very end, once the learning rate had become small:
+**Results (game v1).** The agent `Trainings/DQN/pacman_dqn_final.pth` was trained on a Kaggle GPU.
+Three runs show how much the learning rate matters. All of them decrease epsilon from 1 to 0.02
+over the first 15M steps.
+
+Run 1 (60M steps, learning rate decreasing from 2.5e-4 to 5e-5): the reward collapsed when
+exploration ended, and the agent won no game for 55M steps; it only took off at the very end,
+once the learning rate had become small.
 
 ![dqn_training_run1](./Media/dqn_training_run1.png)
 
-The second one resumed from it for 50M steps with the learning rate kept at 5e-5 and
-epsilon = 0.02 (the notebooks now resume DQN this way):
+Run 2 resumed run 1 for 50M steps at a learning rate of 5e-5 and reached about 50% of games won.
 
 ![dqn_training_run2](./Media/dqn_training_run2.png)
 
-On 1000 games (`python pacman_play.py -a dqn -n 1000`) it wins **53.5%** of the games. Once both
+Run 3 started again from scratch with the same settings as run 1 except the learning rate
+(decreasing from 1e-4 to 2.5e-5). At the moment where run 1 collapsed, run 3 took off: from 1% to
+40% of games won between 12M and 15M steps, then about 65% after 60M steps. This is the current
+checkpoint.
+
+![dqn_training_run3](./Media/dqn_training_run3.png)
+
+On 1000 games (`python pacman_play.py -a dqn -n 1000`) it wins **67.2%** of the games. Once both
 ghosts are eaten, `pacman_play.py` lets the DQN agent play a random move with probability 0.05
-(`--greedy` to disable): played fully greedily, it goes round in circles in an area already
-cleared in 8% of the games and wins only 49.8%. The A2C/PPO agent wins 96.6% of the games after
-about 20M steps; here, after 110M steps, DQN wins about half of them.
+(`--greedy` to disable): played fully greedily, it sometimes goes round in circles in an area
+already cleared and wins 66.1%. The A2C/PPO agent wins 96.6% of the games after about 20M steps.
+
+To resume a DQN training, keep the learning rate at its final value (see the `dqn` branch of the
+training cell of the notebooks).
 
 With the ipython notebook `./Tools/plottings.ipynb` it is possible to visualize 
 the progress of the training. Below is an example of the plotting of the training
