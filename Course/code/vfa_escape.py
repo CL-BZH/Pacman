@@ -1,6 +1,6 @@
 """
 Linear value function approximation on the reduced Pacman game of
-chapter 3 (course, chapter 6). The value of the optimal policy is
+chapter 4 (course, chapter 6). The value of the optimal policy is
 approximated with a few hand-made features; we compare the TD fixed point,
 the best approximation (projection) and the bound of the course.
 """

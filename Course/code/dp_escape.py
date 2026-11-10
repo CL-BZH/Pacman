@@ -1,5 +1,5 @@
 """
-Dynamic programming on a reduced Pacman game (course, chapter 3).
+Dynamic programming on a reduced Pacman game (course, chapter 4).
 
 Maze pacman_map3 of game v1, Pacman and ONE ghost (aggressiveness 0.74),
 no cookies. Pacman must reach a power cookie placed in a corner; reaching it
@@ -141,6 +141,8 @@ def expected_moves(pi, tol=1e-9):
 
 
 if __name__ == "__main__":
+    print("Solving the reduced game by value and policy iteration (about 15 seconds)...",
+          flush=True)
     v, it_vi = value_iteration()
     pi_vi = greedy(v)
     pi_pi, v_pi, it_pi = policy_iteration()

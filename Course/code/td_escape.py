@@ -1,6 +1,6 @@
 """
-Tabular Q-learning and SARSA on the reduced Pacman game of chapter 3
-(course, chapter 4). The agents only sample transitions; the exact
+Tabular Q-learning and SARSA on the reduced Pacman game of chapter 4
+(course, chapter 5). The agents only sample transitions; the exact
 solution of dp_escape.py is used to evaluate them.
 """
 import numpy as np
@@ -50,6 +50,8 @@ def run(method, episodes, eps=0.1, alpha=0.2, checkpoints=()):
 
 
 if __name__ == "__main__":
+    print("Training Q-learning and SARSA for 200,000 episodes each (about 2-3 minutes)...",
+          flush=True)
     v_star, _ = d.value_iteration()
     cps = (1_000, 5_000, 20_000, 50_000, 100_000, 200_000)
     for method in ("q-learning", "sarsa"):
