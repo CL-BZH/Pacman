@@ -12,6 +12,7 @@ import random
 import numpy as np
 from scipy.spatial.distance import cdist
 import time
+import json
 from datetime import timedelta
 from abc import ABC, abstractmethod
 import torch 
@@ -194,7 +195,7 @@ class DQN_PacmanAgent(PacmanAgent):
                      epsilon_start=1.0, epsilon_end=0.02, epsilon_fraction=0.25,
                      learning_starts=20_000, train_freq=1, gradient_steps=1,
                      min_lr=None, log_interval=200, save_interval=250_000,
-                     save_dir="./Tmp"):
+                     save_dir="./Tmp", start_step=0, max_seconds=None, history=None):
         '''
         Train the agent.
         parameters:
@@ -208,6 +209,12 @@ class DQN_PacmanAgent(PacmanAgent):
             min_lr: if set, the learning rate decays linearly from initial_lr to min_lr.
             log_interval: print statistics every 'log_interval' finished games.
             save_interval: save the network every 'save_interval' steps.
+            start_step, max_seconds, history: to split a long training over several sessions.
+                The training stops after 'max_seconds' (saving a checkpoint and the progress in
+                pacman_dqn_progress.json); the next session continues it with 'start_step' (the
+                step reached) and 'history' (the games already played), and the epsilon and
+                learning rate schedules continue where they stopped (the replay memory is not
+                saved: it is filled again during the first 'learning_starts' steps).
         '''
         n_envs = self.n_envs
         save_dir = pathlib.Path(save_dir)
@@ -222,14 +229,21 @@ class DQN_PacmanAgent(PacmanAgent):
 
         ep_rewards = np.zeros(n_envs)
         ep_lengths = np.zeros(n_envs, dtype=np.int64)
-        history = []
+        history = list(history) if history is not None else []
         loss_sum, q_sum, n_updates = 0., 0., 0
         lr = self.lr
-        step, vec_step, next_save, logged = 0, 0, save_interval, 0
+        step, vec_step, logged = start_step, 0, len(history)
+        next_save = (start_step // save_interval + 1) * save_interval
         start = time.time()
-        last_log_time, last_log_step = start, 0
+        last_log_time, last_log_step = start, start_step
+
+        def save_progress():
+            with open(save_dir / "pacman_dqn_progress.json", "w") as f:
+                json.dump({"step": int(step), "total_steps": int(total_steps)}, f)
 
         while step < total_steps:
+            if max_seconds is not None and time.time() - start > max_seconds:
+                break
             # Linear epsilon schedule
             frac = min(1., step / max(1., epsilon_fraction * total_steps))
             self.epsilon = epsilon_start + frac * (epsilon_end - epsilon_start)
@@ -266,7 +280,7 @@ class DQN_PacmanAgent(PacmanAgent):
             vec_step += 1
 
             # Learning
-            if step >= learning_starts and vec_step % train_freq == 0:
+            if step - start_step >= learning_starts and vec_step % train_freq == 0:
                 for _ in range(gradient_steps):
                     loss, q = self.DQN.learn()
                     loss_sum += loss
@@ -299,10 +313,18 @@ class DQN_PacmanAgent(PacmanAgent):
                 next_save += save_interval
                 self.save(str(save_dir / f"pacman_dqn_{step}.pth"))
                 pd.DataFrame(history).to_csv(save_dir / "pacman_dqn_training_log.csv", index=False)
+                save_progress()
 
-        self.save(str(save_dir / "pacman_dqn_final.pth"))
         pd.DataFrame(history).to_csv(save_dir / "pacman_dqn_training_log.csv", index=False)
-        print(f"Training done: {step} steps, {len(history)} games, {timedelta(seconds=int(time.time() - start))}")
+        save_progress()
+        if step < total_steps:
+            # Time limit of the session: continue in another session
+            self.save(str(save_dir / f"pacman_dqn_{step}.pth"))
+            print(f"Session time limit reached at step {step} of {total_steps} "
+                  f"({timedelta(seconds=int(time.time() - start))}): continue in a new session")
+        else:
+            self.save(str(save_dir / "pacman_dqn_final.pth"))
+            print(f"Training done: {step} steps, {len(history)} games, {timedelta(seconds=int(time.time() - start))}")
         return history
 
     def save(self, filename):

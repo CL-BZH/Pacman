@@ -111,7 +111,7 @@ def play_game(env, agent, stockastic=False, display=False, wait=15, speed=0.12, 
     
     state = agent.current_state[0]
     while env.end == False:
-        if env.ghosts != []:
+        if env.n_ghosts_in_game > 0: # (ghosts on the board or waiting in the ghost house)
             action_idx, action = agent.select_action(state, stockastic=False)
             if search is not None:
                 action = agent.actions[search.select_action(env, agent.frame_stacks[0], action_idx)]

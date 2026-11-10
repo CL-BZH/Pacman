@@ -218,7 +218,9 @@ To train it, uncomment `dqn_training()` in `pacman_training.py`.
 
 Without a local GPU, the notebooks `./Tools/train_kaggle.ipynb` and `./Tools/train_colab.ipynb`
 train the A2C/PPO or the DQN agent on a free Kaggle or Google Colab GPU, save checkpoints
-regularly, and can resume a previous training.
+regularly, and can resume a previous training. A DQN training longer than one session (Kaggle
+stops sessions after 12 hours) is split automatically: the session stops after `MAX_HOURS`, and
+the next one continues it with the same exploration and learning-rate schedules.
 
 **Results (game v1).** The agent `Trainings/DQN/pacman_dqn_final.pth` was trained on a Kaggle GPU.
 Three runs show how much the learning rate matters. All of them decrease epsilon from 1 to 0.02
