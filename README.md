@@ -248,8 +248,13 @@ ghosts are eaten, `pacman_play.py` lets the DQN agent play a random move with pr
 (`--greedy` to disable): played fully greedily, it sometimes goes round in circles in an area
 already cleared and wins 66.1%. The A2C/PPO agent wins 96.6% of the games after about 20M steps.
 
-To resume a DQN training, keep the learning rate at its final value (see the `dqn` branch of the
-training cell of the notebooks).
+Run 4 fine-tuned run 3 for 35M more steps (learning rate 2.5e-5, epsilon fixed at 0.02) and did
+not improve it. A checkpoint holds only the network: the replay memory starts empty and Adam's
+statistics start from zero. The games won fell from about 60% to under 50% as soon as the updates
+started, and came back only to about 58%. On the same 1000 games, the fine-tuned agent wins 63.1%,
+so run 3 remains the current checkpoint.
+
+![dqn_training_run4](./Media/dqn_training_run4.png)
 
 With the ipython notebook `./Tools/plottings.ipynb` it is possible to visualize 
 the progress of the training. Below is an example of the plotting of the training

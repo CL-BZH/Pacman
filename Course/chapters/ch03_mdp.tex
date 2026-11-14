@@ -112,6 +112,39 @@ handled by the same equations.
   leave, and the image (with its power plane) is again a state.
 \end{remark}
 
+\begin{pacman}{What if the image did not show the power?}{missing-power}
+  Consider two boards that look exactly the same, a ghost next to Pacman,
+  with one move of power left in the first and ten in the second. In the
+  second, eating the ghost is a good move; in the first, the ghost turns
+  dangerous at the next move and chasing it can be fatal. Same picture,
+  different futures: an image that did not show the remaining power would
+  not be a state, and an agent that received it would be solving a POMDP
+  without knowing it. Stacking frames would not repair this: two frames
+  show at most that the power is on, while the countdown started when the
+  power cookie was eaten, up to $12$ moves earlier. Such an agent could
+  only learn one behaviour for all the boards that look alike, a compromise
+  that sometimes chases a ghost too long and sometimes gives up a chase
+  that would have succeeded.
+
+  This is why the images of this repository have always encoded the power,
+  in three successive ways. In the first version, a three-channel colour
+  image, the power $p = \code{power\_credit} / \code{max\_power\_credit}$
+  changed the colours: the green component of each ghost was $p$ (from red
+  towards yellow as $p$ grew), and Pacman's blue was $1 - p/2$. A later version
+  (October 2024) added a fourth channel equal to $p$ on the cells of the
+  ghosts. The feature planes of this course (\cref{sec:observation}) give
+  $p$ as a constant plane. All three are Markov: the power matters only
+  while ghosts are on the board, and then it is visible.
+
+  The lesson is twofold. First, the Markov property is not a property of
+  the game alone, but of the description of the game that the agent is
+  given: before blaming an algorithm, check that its input contains
+  everything that decides what happens next. Second, information that is
+  present is not necessarily easy to use: in the first version the network
+  had to learn to read the power from shades of colour mixed with the
+  identity of the objects, whereas a dedicated plane gives it directly.
+\end{pacman}
+
 \section{Returns}
 
 \begin{definition}{Return}{return}

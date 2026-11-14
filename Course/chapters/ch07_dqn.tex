@@ -456,6 +456,17 @@ with torch.no_grad():                      # Polyak averaging
   of the games) happen while ghosts are present; in a fifth of the games
   the agent is caught before reaching any power cookie.
 
+  \emph{Run 4} fine-tuned run 3 for $35$ million more steps, at the final
+  learning rate $2.5 \times 10^{-5}$ and with $\varepsilon$ fixed at
+  $0.02$. It did not improve the agent. A checkpoint holds only the
+  network: the replay memory starts empty and Adam's running averages
+  start from zero. As soon as the updates started, on the first $20\,000$
+  transitions collected, the games won fell from about $60\%$ to under
+  $50\%$, and $35$ million steps brought them back only to about $58\%$.
+  On the same $1000$ games, the fine-tuned agent wins $63.1\%$ of them,
+  fewer than run 3. Restarting a DQN training is not the same as
+  continuing it.
+
   The A2C/PPO agent of \cref{ch:ppo} wins $96.6\%$ of the games after
   about $20$ million steps. Two lessons: for DQN the learning rate decided
   whether the agent learnt at all, and in a game where one mistake ends
@@ -474,7 +485,10 @@ with torch.no_grad():                      # Polyak averaging
   steps\\[6pt]
   \includegraphics[width=\textwidth]{../Media/dqn_training_run3.png}\\[2pt]
   \small (c) run 3: from scratch, learning rate from $10^{-4}$ to $2.5
-  \times 10^{-5}$, $60$ million steps
+  \times 10^{-5}$, $60$ million steps\\[6pt]
+  \includegraphics[width=\textwidth]{../Media/dqn_training_run4.png}\\[2pt]
+  \small (d) run 4: run 3 fine-tuned at $2.5 \times 10^{-5}$ with
+  $\varepsilon = 0.02$, $35$ million steps
   \caption{Training of the DQN agent on game \code{v1} (Kaggle GPU):
     reward per game, games won and lost, and ghosts left at the end
     (plotted with \code{Tools/plottings.ipynb}). Runs 1 and 3 differ only

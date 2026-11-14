@@ -491,23 +491,40 @@ handled by considering all their possible values.
   \end{equation*}
   and likewise $\Prob(\text{E2}) \leq t^{-4}$ for fixed $s_a$.
 
-  \emph{Step 5: sum over the rounds and the possible counts.} The counts $s$
-  and $s_a$ at round $t$ are random, but they lie between $1$ and $t$. The
-  event ``$A_t = a$ and $N_a(t-1) \geq \ell$'' is therefore contained in the
-  union, over all the values $1 \leq s, s_a \leq t$, of the events (E1) or
-  (E2) for these values, and its probability is at most the sum of their
-  probabilities (union bound): $t^2$ pairs of values, each contributing at
-  most $2 t^{-4}$. Taking expectations in Step 1,
+  \emph{Step 5: sum over the rounds.} By Step 1, it remains to bound, for
+  each round $t$, the probability $p_t$ that $A_t = a$ and $N_a(t-1) \geq
+  \ell$; then $\E[N_a(T)] \leq \ell + \sum_t p_t$, since the expectation
+  of an indicator is the probability of its event. By Steps 2 and 3, this
+  event implies (E1) or (E2), evaluated at the \emph{current} counts $s =
+  N_\star(t-1)$ and $s_a = N_a(t-1)$.
+
+  The difficulty is that these counts are random, whereas Step 4 applies
+  to a fixed number of rewards. The way out: whatever the value of the
+  count $N_\star(t-1)$, it is one of the numbers $1, 2, \dots, t$. So if
+  (E1) holds at the current count, then it holds for \emph{some} $s$
+  between $1$ and $t$:
   \begin{equation*}
-    \E[N_a(T)] \leq \ell + \sum_{t=K+1}^{T} \sum_{s=1}^{t}
-    \sum_{s_a=1}^{t} 2\, t^{-4}
+    \left\{ \hat\mu_{\star, N_\star(t-1)} \leq \mu^\star - c_{t,
+    N_\star(t-1)} \right\} \subseteq \bigcup_{s=1}^{t} \left\{
+    \hat\mu_{\star, s} \leq \mu^\star - c_{t, s} \right\}.
+  \end{equation*}
+  The events on the right are about a fixed number of rewards each, and
+  the probability of a union is at most the sum of the probabilities (the
+  \emph{union bound}). With Step 4, the probability of (E1) at the current
+  count is at most $\sum_{s=1}^{t} t^{-4} = t \cdot t^{-4} = t^{-3}$. In
+  the same way, the probability of (E2) at the current count is at most
+  $t^{-3}$. Hence $p_t \leq 2 t^{-3}$, and
+  \begin{equation*}
+    \E[N_a(T)] \leq \ell + \sum_{t=K+1}^{T} 2\, t^{-3}
     \leq \ell + 2 \sum_{t \geq 1} t^{-2} = \ell + \frac{\pi^2}{3},
   \end{equation*}
-  using $\sum_{t \geq 1} t^{-2} = \pi^2 / 6$. This is why the bonus uses
-  $\delta = t^{-4}$: the $t^2$ possible values of the counts cost a factor
-  $t^2$, and $t^{-2}$ is still summable. Finally $\ell \leq 8 \ln T /
-  \Delta_a^2 + 1$, and the regret bound follows from
-  \cref{prop:regret-decomp}.
+  using $t^{-3} \leq t^{-2}$ and $\sum_{t \geq 1} t^{-2} = \pi^2 / 6$
+  (summing $t^{-3}$ exactly would give the slightly smaller constant
+  $2 \sum_t t^{-3} \approx 2.4$). This is why the bonus uses a probability
+  $\delta = t^{-4}$ that decreases fast: not knowing the count costs a
+  factor $t$, and $t \cdot t^{-4}$ must still be summable over the rounds.
+  Finally $\ell \leq 8 \ln T / \Delta_a^2 + 1$, and the regret bound
+  follows from \cref{prop:regret-decomp}.
 \end{proof}
 
 \begin{intuition}
@@ -520,33 +537,243 @@ handled by considering all their possible values.
   the gap is small, and it never exceeds the trivial bound $\Delta_a T$.
 \end{intuition}
 
-The regret of UCB1 grows like $\ln T$, and this is optimal up to the
-constant:
+\subsection{Can any algorithm do better?}
+
+UCB1 plays a suboptimal arm $O(\ln T)$ times. Could a cleverer algorithm
+play it only a bounded number of times, or $O(\ln \ln T)$ times? The answer
+is no: $\ln T$ is unavoidable. Making this precise requires two
+ingredients.
+
+\paragraph{Which algorithms?} A lower bound cannot hold for \emph{every}
+algorithm. The algorithm ``always play arm 1'' has zero regret on every
+bandit where arm 1 happens to be the best: on those bandits it never plays
+a suboptimal arm. But on all the other bandits its regret grows linearly.
+Such an algorithm is not learning anything; it is betting. The lower bound
+concerns the algorithms that are good on \emph{all} bandits of a family,
+for example all the Bernoulli bandits (each arm gives $1$ with probability
+$\mu_a$ and $0$ otherwise). ``Good'' is taken in a weak sense: the regret
+grows more slowly than any power of $T$, $\mathcal{R}_T = o(T^\alpha)$ for
+every $\alpha > 0$. Such algorithms are called \emph{consistent}; UCB1, whose
+regret is $O(\ln T)$, is one of them.
+
+\paragraph{How different are two arms?} The difficulty of ruling out arm
+$a$ depends on how different its rewards look from those of the best arm,
+measured by the following divergence.
+
+\begin{definition}{Kullback--Leibler divergence}{kl}
+  For two distributions $P$ and $Q$ with densities (or probabilities) $p$
+  and $q$,
+  \begin{equation}
+    \mathrm{KL}(P \,\|\, Q) = \E_{X \sim P}\left[ \ln \frac{p(X)}{q(X)}
+    \right].
+  \end{equation}
+  For Bernoulli distributions, the notation $\mathrm{kl}$ (lower case) is
+  used for the divergence as a function of the two means $x, y \in (0, 1)$:
+  \begin{equation}
+    \label{eq:kl-bernoulli}
+    \mathrm{kl}(x, y) = \mathrm{KL}\big(\mathrm{Ber}(x) \,\|\,
+    \mathrm{Ber}(y)\big) = x \ln \frac{x}{y} + (1 - x) \ln \frac{1 - x}{1 -
+    y},
+  \end{equation}
+  where $\mathrm{Ber}(x)$ is the Bernoulli distribution of mean $x$.
+\end{definition}
+
+The formula for $\mathrm{kl}$ is the general formula applied to Bernoulli
+distributions: $X$ takes the value $1$ with probability $p(1) = x$ and $0$
+with probability $p(0) = 1 - x$ under $P = \mathrm{Ber}(x)$, and $q(1) = y$,
+$q(0) = 1 - y$ under $Q = \mathrm{Ber}(y)$, so the expectation of $\ln(p(X)
+/ q(X))$ is the sum of its two values weighted by their probabilities, $x
+\ln(x/y) + (1 - x) \ln((1 - x)/(1 - y))$.
+
+The divergence is nonnegative, and zero only when $P = Q$. It is the
+average, over rewards drawn from $P$, of the log-likelihood ratio $\ln
+(p(X) / q(X))$: how much more likely each reward is under $P$ than under
+$Q$. In other words, it is the average amount of \emph{evidence} that one
+sample brings in favour of $P$ against $Q$. After $n$ samples the evidence
+adds up to about $n\, \mathrm{KL}(P \,\|\, Q)$.
 
 \begin{theorem}{Lai--Robbins lower bound (stated without proof)}{lai-robbins}
-  For any algorithm whose regret is $o(T^\alpha)$ for every $\alpha > 0$ on
-  every bandit of a given parametric family, and every suboptimal arm $a$,
+  Consider a consistent algorithm: on every bandit of a given parametric
+  family (for example the Bernoulli bandits), its regret is $o(T^\alpha)$
+  for every $\alpha > 0$. Then, on every bandit of the family and for every
+  suboptimal arm $a$,
   \begin{equation}
     \liminf_{T \to \infty} \frac{\E[N_a(T)]}{\ln T} \geq
     \frac{1}{\mathrm{KL}(\nu_a \,\|\, \nu_\star)},
   \end{equation}
-  where KL is the Kullback--Leibler divergence (Lai and Robbins, 1985).
+  where $\nu_\star$ is the distribution of a best arm (Lai and Robbins,
+  1985). Consequently,
+  \begin{equation}
+    \liminf_{T \to \infty} \frac{\mathcal{R}_T}{\ln T} \geq \sum_{a :
+    \Delta_a > 0} \frac{\Delta_a}{\mathrm{KL}(\nu_a \,\|\, \nu_\star)}.
+  \end{equation}
 \end{theorem}
 
+\paragraph{What the theorem says.} The $\liminf$ means: for large $T$, the
+algorithm plays arm $a$ at least about $\ln T / \mathrm{KL}(\nu_a \,\|\,
+\nu_\star)$ times (up to a factor that tends to $1$). The second inequality
+follows from the first by \cref{prop:regret-decomp}. So every consistent
+algorithm has a regret that grows at least like $\ln T$, and UCB1, with its
+$O(\ln T)$ regret, has the best possible rate. Only the constant can be
+improved.
+
+\paragraph{An example.} Consider two \emph{Bernoulli} arms: each play of an
+arm gives the reward $1$ with some probability and $0$ otherwise, like a
+coin that comes up heads with that probability, and the mean of the arm is
+this probability. Let arm $a$ give $1$ with probability $\mu_a = 0.5$ and
+the best arm with probability $\mu^\star = 0.6$. By \eqref{eq:kl-bernoulli},
+$\mathrm{kl}(0.5, 0.6) = 0.5 \ln(0.5/0.6) + 0.5 \ln(0.5/0.4) \approx 0.020$,
+so any consistent
+algorithm plays arm $a$ at least about $49 \ln T$ times: about $680$ times
+in $T = 10^6$ rounds. The bound of \cref{thm:ucb-regret} for UCB1 is $8 \ln
+T / \Delta_a^2 = 800 \ln T$, sixteen times more. The order of growth is the
+same, but the constants differ. Since $\mathrm{kl}(x, y) \geq 2 (x - y)^2$
+(Pinsker's inequality), the lower bound is at most $\ln T / (2
+\Delta_a^2)$: like UCB1, it is of order $\ln T / \Delta_a^2$. Algorithms
+that reach the constant $1/\mathrm{KL}$ exist: KL-UCB, which replaces the
+Hoeffding bonus by a confidence bound built from $\mathrm{kl}$, and
+Thompson sampling, the next algorithm.
+
+\paragraph{Why it is true (a sketch).} The idea is that the algorithm
+must be able to tell the true bandit apart from a slightly different one,
+and that this takes about $\ln T / \mathrm{KL}$ plays of arm $a$. We follow
+the example above: arm $a$ gives $1$ with probability $0.5$, the best arm
+with probability $0.6$.
+
+\emph{Step 1: a modified bandit.} Consider a second bandit, identical to
+the true one except for arm $a$, whose probability of giving $1$ is raised
+from $0.5$ to $0.65$, just above $0.6$. In this modified bandit, arm $a$ is
+the best arm.
+
+\emph{Step 2: a consistent algorithm behaves very differently in the two
+bandits.} In the true bandit, arm $a$ is suboptimal, so a consistent
+algorithm plays it rarely: $\E[N_a(T)] = o(T^\alpha)$, and the probability
+that it plays $a$ more than $T/2$ times is at most $\E[N_a(T)] / (T/2)$
+(Markov's inequality), which is $o(T^{\alpha - 1})$, very small. In the
+modified bandit, arm $a$ is the best, so the algorithm plays the
+\emph{other} arms rarely, and plays $a$ more than $T/2$ times with a
+probability close to $1$. The event ``$N_a(T) > T/2$'' thus has a
+probability close to $0$ in one bandit and close to $1$ in the other.
+
+\emph{Step 3: the only way to see the difference is to play arm $a$.} The
+two bandits differ only in arm $a$, so the algorithm can behave
+differently in them only through the rewards it receives from arm $a$. Each
+reward of arm $a$ brings, on average, an amount of evidence
+$\mathrm{KL}(\nu_a \,\|\, \nu'_a)$ for the true bandit against the modified
+one, where $\nu'_a$ is the modified distribution of arm $a$; in the example,
+$\mathrm{kl}(0.5, 0.65) \approx 0.047$. After $N_a(T)$ plays of $a$, the
+evidence is about $\E[N_a(T)]\, \mathrm{KL}(\nu_a \,\|\, \nu'_a)$. An
+inequality of information theory (the Bretagnolle--Huber inequality, stated
+here without proof) says that with this amount of evidence, no procedure
+can distinguish the two bandits with errors smaller than about
+$e^{-\text{evidence}}$: for any event $E$,
+\begin{equation*}
+  \Prob_{\text{true}}(E) + \Prob_{\text{modified}}(\text{not } E) \geq
+  \frac{1}{2} \exp\left( - \E[N_a(T)]\, \mathrm{KL}(\nu_a \,\|\, \nu'_a)
+  \right).
+\end{equation*}
+
+\emph{Step 4: conclude.} Take $E$ = ``$N_a(T) > T/2$''. By Step 2, the left
+side is at most about $T^{\alpha - 1}$, so $\frac{1}{2} \exp(-\E[N_a(T)]\,
+\mathrm{KL}) \lesssim T^{\alpha - 1}$, that is,
+\begin{equation*}
+  \E[N_a(T)] \gtrsim \frac{(1 - \alpha) \ln T}{\mathrm{KL}(\nu_a \,\|\,
+  \nu'_a)}.
+\end{equation*}
+This holds for every $\alpha > 0$, and for every modified arm just above
+the best one. Letting $\alpha \to 0$ and moving the modified mean down to
+$0.6$, so that $\nu'_a$ tends to $\nu_\star$, gives the theorem: $\E[N_a(T)]
+\gtrsim \ln T / \mathrm{KL}(\nu_a \,\|\, \nu_\star)$. The logarithm comes
+from the error probability $1/T$ that consistency demands: making an
+error exponentially unlikely in the evidence, $e^{-\text{evidence}} \approx
+1/T$, requires an evidence of about $\ln T$.
+
 \begin{intuition}
-  $\mathrm{KL}(\nu_a \,\|\, \nu_\star)$ measures how much evidence one
-  reward of arm $a$ brings that $a$ is not the best arm. Any algorithm that
-  does well on every bandit must gather about $\ln T$ units of this
-  evidence against each suboptimal arm, hence play it about $\ln T /
-  \mathrm{KL}$ times. Arms whose rewards look alike are hard to rule out.
+  Evidence is measured on a logarithmic scale: after $n$ rewards of arm
+  $a$, the observed rewards are about $e^{\text{evidence}}$ times more
+  likely if arm $a$ is what it really is than if it were the best arm, with
+  an evidence of about $n\, \mathrm{KL}(\nu_a \,\|\, \nu_\star)$, since
+  each reward adds $\mathrm{KL}$ on average. To rule out that $a$ is the
+  best arm with an error probability of about $1/T$, as consistency
+  requires, the data must be about $T$ times more likely under one
+  hypothesis than under the other: $e^{n\, \mathrm{KL}} \approx T$, that
+  is, $n\, \mathrm{KL} \approx \ln T$, hence $n \approx \ln T /
+  \mathrm{KL}$ plays. In the example, $\mathrm{KL} \approx 0.020$ and $\ln
+  T \approx 13.8$ for $T = 10^6$: about $690$ plays. Arms whose rewards look
+  alike (small $\mathrm{KL}$) are hard to rule out. This count is
+  \emph{per suboptimal arm}, each with its own $\mathrm{KL}$: in total the
+  suboptimal arms are played about $\sum_a \ln T / \mathrm{KL}(\nu_a \,\|\,
+  \nu_\star)$ times, which is $(K - 1) \ln T / \mathrm{KL}$ only if they all
+  have the same $\mathrm{KL}$.
 \end{intuition}
 
 \section{Thompson sampling}
 
-Thompson sampling (1933) is Bayesian: maintain a posterior distribution
-over the mean of each arm, sample one value from each posterior, and play
-the arm whose sample is largest. Each arm is played with the posterior
-probability that it is the best.
+Thompson sampling (1933) represents what the agent knows about each arm by
+a probability distribution, and uses it to decide. Two kinds of
+distributions must be kept apart here:
+\begin{itemize}[nosep]
+  \item the \emph{reward distribution} $\nu_a$ of an arm, a property of the
+    bandit: it is fixed, but unknown to the agent (for a Bernoulli arm, it
+    is determined by its mean $\mu_a$);
+  \item a \emph{belief} about the unknown mean $\mu_a$: a distribution over
+    the possible values of $\mu_a$ in $[0, 1]$, which expresses which values
+    the agent finds plausible. It is not a property of the bandit but of the
+    agent's knowledge, and it changes as rewards arrive.
+\end{itemize}
+This second kind of distribution is the Bayesian way of describing
+uncertainty. The belief before any reward is the \emph{prior}; the belief
+after some rewards is the \emph{posterior}, obtained from the prior by
+Bayes' rule:
+\begin{equation}
+  \label{eq:bayes}
+  \underbrace{p(\theta \mid \text{data})}_{\text{posterior}} \propto
+  \underbrace{p(\text{data} \mid \theta)}_{\text{likelihood}} \times
+  \underbrace{p(\theta)}_{\text{prior}},
+\end{equation}
+where $\theta$ denotes a possible value of the unknown mean. The word
+``posterior'' says that the distribution is the belief \emph{after} seeing
+the data, and that it was obtained in this way from a prior. Thompson
+sampling keeps one posterior per arm and updates it after each reward.
+
+\paragraph{Bernoulli arms.} With no information, a natural prior is the
+uniform distribution on $[0, 1]$: every mean is equally plausible. The
+posterior then has a simple form, a \emph{Beta distribution}. The
+$\mathrm{Beta}(\alpha, \beta)$ distribution, for $\alpha, \beta > 0$, has
+density $\theta^{\alpha - 1} (1 - \theta)^{\beta - 1} / B(\alpha, \beta)$
+on $[0, 1]$, where $B(\alpha, \beta)$ is the normalising constant, and mean
+$\alpha / (\alpha + \beta)$; $\mathrm{Beta}(1, 1)$ is the uniform
+distribution.
+
+\begin{proposition}{Posterior of a Bernoulli mean}{beta-posterior}
+  With a uniform prior on $\theta$, after $S$ rewards equal to $1$
+  (successes) and $F$ rewards equal to $0$ (failures) of a Bernoulli arm of
+  mean $\theta$, the posterior is $\mathrm{Beta}(1 + S, 1 + F)$.
+\end{proposition}
+
+\begin{proof}
+  Given $\theta$, a success has probability $\theta$ and a failure $1 -
+  \theta$, independently, so the likelihood of the observed rewards (in
+  the order they came) is $\theta^S (1 - \theta)^F$. The prior density is
+  $1$ on $[0, 1]$. By \eqref{eq:bayes}, the posterior density is
+  proportional to $\theta^S (1 - \theta)^F$, which is, up to the constant,
+  the density of $\mathrm{Beta}(1 + S, 1 + F)$.
+\end{proof}
+
+For example, after $3$ successes and $1$ failure the posterior is
+$\mathrm{Beta}(4, 2)$, of mean $4/6 \approx 0.67$ and still wide, since
+four rewards say little; after $300$ successes and $100$ failures it is
+$\mathrm{Beta}(301, 101)$, of mean $\approx 0.75$ and concentrated around
+it. The posterior narrows as the arm is played, as the error bars of UCB do.
+
+\paragraph{The algorithm.} At each round, Thompson sampling draws one
+value $\theta_a$ from the posterior of each arm and plays the arm whose
+value is the largest. An arm is therefore played with the probability,
+under the current beliefs, that it is the best arm: this is called
+\emph{probability matching}. The prior is only a device to build the
+algorithm. The bandit itself is not random, and the guarantees below hold
+for any fixed means $\mu_a$; with many rewards, the posterior is dominated
+by the data and the choice of the prior hardly matters.
 
 \begin{intuition}
   An arm that is well known has a narrow posterior, and its sample is close
@@ -571,11 +798,156 @@ probability that it is the best.
   \end{algorithmic}
 \end{algobox}
 
-The $\mathrm{Beta}(1 + S, 1 + F)$ distribution is the posterior of a
-Bernoulli mean under a uniform prior after $S$ successes and $F$
-failures. Thompson sampling attains the Lai--Robbins bound for Bernoulli
-bandits (Kaufmann, Korda and Munos, 2012; Agrawal and Goyal, 2012), and it
-is often the best performer in practice.
+In the algorithm, $\mathrm{Beta}(1 + S_a, 1 + F_a)$ is the posterior of
+arm $a$ (\cref{prop:beta-posterior}), and updating it only requires
+counting successes and failures. Thompson sampling attains the
+Lai--Robbins bound for Bernoulli bandits (Kaufmann, Korda and Munos, 2012;
+Agrawal and Goyal, 2012), and it is often the best performer in practice.
+
+\paragraph{Where is the likelihood used?} In the update of the posterior.
+By Bayes' rule, each new reward $r$ of arm $a$ multiplies the posterior of
+the arm by the likelihood of that reward, $p(r \mid \theta)$, and the
+result is normalised:
+\begin{equation}
+  \label{eq:bayes-update}
+  p_{\text{new}}(\theta) \propto p(r \mid \theta)\, p_{\text{old}}(\theta).
+\end{equation}
+For a Bernoulli arm the likelihood is $p(r \mid \theta) = \theta^r (1 -
+\theta)^{1 - r}$: a success ($r = 1$) multiplies the density of
+$\mathrm{Beta}(1 + S, 1 + F)$, proportional to $\theta^S (1 - \theta)^F$,
+by $\theta$, which gives $\mathrm{Beta}(2 + S, 1 + F)$; a failure
+multiplies it by $1 - \theta$, which gives $\mathrm{Beta}(1 + S, 2 + F)$.
+The last line of the algorithm, which only increments $S_a$ or $F_a$, is
+this multiplication by the likelihood, written in terms of the two numbers
+that determine the posterior. The likelihood never appears explicitly
+because the prior is \emph{conjugate} to it: the posterior stays in the
+family of the prior (Beta distributions), and the update reduces to
+changing a few numbers.
+
+\paragraph{Other kinds of rewards.} The Bernoulli case is one instance of
+a general recipe: choose a model of the rewards of an arm, that is a
+likelihood $p(r \mid \theta)$ with an unknown parameter $\theta$, and a
+prior on $\theta$; then apply the following algorithm, where $m(\theta)$ is
+the mean reward of the model with parameter $\theta$.
+
+\begin{algobox}{Thompson sampling (general form)}
+  \begin{algorithmic}[1]
+    \State a prior $p_a(\theta)$ for every arm
+    \For{$t = 1, \dots, T$}
+      \State sample $\theta_a \sim p_a$ for every arm
+      \State play $A_t = \argmax_a m(\theta_a)$, observe $R_t$
+      \State $p_{A_t}(\theta) \gets p(R_t \mid \theta)\, p_{A_t}(\theta) /
+        \text{normalisation}$ \Comment{Bayes' rule}
+    \EndFor
+  \end{algorithmic}
+\end{algobox}
+
+The most common case after Bernoulli rewards is Gaussian rewards.
+
+\begin{proposition}{Posterior of a Gaussian mean}{gauss-posterior}
+  Let the rewards of an arm be Gaussian with unknown mean $\theta$ and
+  known variance $\sigma^2$, and let the prior be $\mathcal{N}(m_0,
+  s_0^2)$. After $n$ rewards of average $\bar r$, the posterior is
+  $\mathcal{N}(m_n, s_n^2)$ with
+  \begin{equation}
+    \frac{1}{s_n^2} = \frac{1}{s_0^2} + \frac{n}{\sigma^2}, \qquad m_n =
+    s_n^2 \left( \frac{m_0}{s_0^2} + \frac{n \bar r}{\sigma^2} \right).
+  \end{equation}
+  With a flat prior ($s_0 \to \infty$), the posterior is $\mathcal{N}(\bar
+  r, \sigma^2 / n)$.
+\end{proposition}
+
+\begin{proof}
+  The likelihood of the rewards $r_1, \dots, r_n$ is proportional to
+  $\exp(-\sum_i (r_i - \theta)^2 / (2 \sigma^2))$ and the prior density to
+  $\exp(-(\theta - m_0)^2 / (2 s_0^2))$. The logarithm of their product is,
+  up to a constant independent of $\theta$,
+  \begin{equation*}
+    -\frac{\theta^2}{2} \left( \frac{1}{s_0^2} + \frac{n}{\sigma^2}
+    \right) + \theta \left( \frac{m_0}{s_0^2} + \frac{n \bar r}{\sigma^2}
+    \right),
+  \end{equation*}
+  a quadratic function of $\theta$. A density whose logarithm is
+  $-\theta^2 / (2 s^2) + \theta m / s^2 + \text{const}$ is the density of
+  $\mathcal{N}(m, s^2)$ (complete the square); identifying the
+  coefficients gives $s_n$ and $m_n$. When $s_0 \to \infty$, the terms in
+  $1/s_0^2$ vanish.
+\end{proof}
+
+The precisions (inverse variances) add up: each reward adds $1/\sigma^2$
+to the precision of the belief, and the posterior mean is a weighted
+average of the prior mean and the average reward. With a flat prior,
+Thompson sampling plays
+\begin{equation*}
+  \argmax_a \left( \hat\mu_a + \frac{\sigma}{\sqrt{N_a(t-1)}}\, Z_a
+  \right), \qquad Z_a \sim \mathcal{N}(0, 1)\ \text{independent},
+\end{equation*}
+which looks like UCB1: the estimate plus a bonus of size $1 /
+\sqrt{N_a(t-1)}$. The difference is that the bonus is random, sometimes
+large and sometimes negative, instead of fixed and optimistic.
+
+Other conjugate pairs give equally simple updates: for Gaussian rewards of
+unknown variance, a Normal--Gamma prior (the sampled mean then follows a
+Student $t$ distribution); for counts (Poisson rewards) or waiting times
+(exponential rewards), a Gamma prior; for rewards with several possible
+outcomes (categorical), a Dirichlet prior.
+
+\paragraph{Without a model.} Suppose the rewards lie in $[0, 1]$ but are
+not just $0$ or $1$: an arm may give $0.73$, then $0.41$, and so on, with a
+distribution we know nothing about. The Beta posterior of
+\cref{prop:beta-posterior} needs successes and failures, and a reward of
+$0.73$ is neither. Agrawal and Goyal (2012) turn each reward into a success
+or a failure \emph{at random}: after a reward $r$, flip a coin that comes up
+heads with probability $r$; count heads as a success ($B = 1$) and tails as
+a failure ($B = 0$), and update the Beta posterior with $B$ instead of $r$.
+A reward of $0.73$ thus counts as a success with probability $0.73$; a
+reward of $1$ is always a success and a reward of $0$ always a failure.
+
+Why does this work? The converted rewards $B$ of an arm behave exactly like
+the rewards of a Bernoulli arm \emph{with the same mean}. Take first an
+example: an arm that gives the reward $0.2$ or $0.8$, each with probability
+$1/2$, so that its mean is $0.5$. A conversion gives $B = 1$ if the reward
+was $0.2$ and the coin came up heads, or if the reward was $0.8$ and the
+coin came up heads:
+\begin{equation*}
+  \Prob(B = 1) = \underbrace{\tfrac{1}{2}}_{\Prob(R = 0.2)} \times
+  \underbrace{0.2}_{\Prob(\text{heads} \mid R = 0.2)} +
+  \underbrace{\tfrac{1}{2}}_{\Prob(R = 0.8)} \times
+  \underbrace{0.8}_{\Prob(\text{heads} \mid R = 0.8)} = 0.5,
+\end{equation*}
+the mean of the arm. In general, by the law of total probability (sum over
+the possible rewards $r$ the probability of getting $r$ times the
+probability of heads given $r$, which is $r$ by construction of the coin),
+\begin{equation*}
+  \Prob(B = 1) = \sum_r \Prob(R = r)\, \Prob(B = 1 \mid R = r) = \sum_r
+  \Prob(R = r)\, r = \E[R] = \mu_a,
+\end{equation*}
+with an integral instead of the sum for rewards with a density. The
+successive $B$ of an arm are also independent, since the rewards and the
+coins are. For the algorithm, each arm is therefore a Bernoulli arm of mean
+$\mu_a$, and the best arm is still the best: the Bernoulli algorithm applies
+unchanged, with the same guarantees. The price is a little extra noise,
+since the coin replaces the exact value of each reward by a $0$ or a $1$;
+but no model of the rewards is needed.
+
+\paragraph{Without a conjugate prior.} For more complex models, the
+posterior has no closed form and is approximated: by a Gaussian (Laplace
+approximation), by sampling (Markov chain Monte Carlo), or by an
+\emph{ensemble} of models trained on resampled data. The last is how
+Thompson sampling enters deep RL: Bootstrapped DQN (\cref{ch:exploration})
+keeps several Q-networks and follows one drawn at random for a whole
+episode. For contextual bandits with a linear model
+(\cref{sec:contextual}), the posterior on the weights is Gaussian, which
+gives linear Thompson sampling, the counterpart of LinUCB.
+
+\paragraph{Guarantees, and a caveat.} For the one-parameter exponential
+families (Bernoulli, Gaussian, Poisson, exponential), Thompson sampling with
+a suitable prior attains the Lai--Robbins bound (Korda, Kaufmann and Munos,
+2013). But it relies on its model: if the model is wrong, for example a
+Gaussian model with a variance much smaller than that of the real rewards,
+the posteriors narrow too fast, the agent becomes confident too early, and
+it can stop exploring an arm that is in fact the best. The testbed below
+shows this effect.
 
 \begin{remark}{A testbed}{bandit-testbed}
   The script \code{Course/code/bandits.py} (a few minutes; option
@@ -607,6 +979,41 @@ is often the best performer in practice.
   long after the arms are well estimated, so it is overtaken by
   $\varepsilon = 0.01$ at first and only passes it after $10\,000$ rounds.
   Guarantees of order $\ln T$ say nothing about the constants.
+
+  With the option \code{-{}-gaussian}, the arms give Gaussian rewards of
+  standard deviation $\sigma = 1$ around the same kind of means (drawn
+  uniformly in $[0, 1]$). UCB uses the bonus $\sigma \sqrt{2 \ln t / n}$,
+  and Thompson sampling the posterior of \cref{prop:gauss-posterior} with a
+  flat prior, either with the right model ($\sigma = 1$) or with a wrong
+  one ($\sigma = 0.1$):
+  \begin{center}
+    \begin{tabular}{@{}lcccc@{}}
+      \toprule
+      Regret after $T$ rounds & $100$ & $1\,000$ & $10\,000$ &
+        $100\,000$ \\
+      \midrule
+      Greedy & $18.8$ & $119.8$ & $1100.1$ & $10903.4$ \\
+      $\varepsilon$-greedy, $\varepsilon = 0.1$ & $20.7$ & $91.2$ & $549.5$ &
+        $4454.0$ \\
+      $\varepsilon$-greedy, $\varepsilon = 0.01$ & $17.5$ & $85.3$ & $514.9$ &
+        $2043.9$ \\
+      UCB ($\sigma = 1$) & $27.8$ & $128.7$ & $349.0$ & $702.5$ \\
+      Thompson sampling ($\sigma = 1$) & $26.6$ & $111.8$ & $264.6$ &
+        $451.9$ \\
+      Thompson sampling, wrong model ($\sigma = 0.1$) & $16.6$ & $85.1$ &
+        $671.0$ & $6382.5$ \\
+      \bottomrule
+    \end{tabular}
+  \end{center}
+  The noise is now large compared with the differences between the means,
+  so all the algorithms need more plays to tell the arms apart and the
+  regrets are larger. Thompson sampling with the right model is still the
+  best in the long run. With the wrong model, it believes that each reward
+  is ten times more precise than it is: its posteriors narrow too fast, so
+  it is the best of all at first (it hardly explores), but it then stays
+  confidently on arms that are not the best, and its regret grows linearly
+  ($\times 10$ per tenfold increase of $T$), worse than $\varepsilon$-greedy
+  with $\varepsilon = 0.01$.
 \end{remark}
 
 \section{Gradient bandits}
@@ -633,7 +1040,7 @@ rewards.
 \begin{proposition}{The gradient bandit is stochastic gradient ascent}%
   {grad-bandit}
   Let $J(H) = \sum_a \pi(a) \mu_a$ be the expected reward. For any
-  baseline $b$ that does not depend on $A_t$, the expected update of
+  baseline $\bar R_t$ that does not depend on $A_t$, the expected update of
   \eqref{eq:gradient-bandit} is $\alpha\, \nabla_H J$.
 \end{proposition}
 
@@ -647,15 +1054,80 @@ rewards.
     = \E\left[ \mu_{A_t} \left( \ind[A_t = b] - \pi(b) \right)
     \right].
   \end{equation*}
-  Given $A_t$, $\E[R_t] = \mu_{A_t}$, and the baseline term has mean zero:
-  $\E[\ind[A_t = b] - \pi(b)] = \pi(b) - \pi(b) = 0$.
+  The expected update of $H(b)$, divided by $\alpha$, is
+  \begin{equation*}
+    \E\left[ (R_t - \bar R_t) \left( \ind[A_t = b] - \pi(b) \right)
+    \right] = \E\left[ R_t \left( \ind[A_t = b] - \pi(b) \right) \right] -
+    \bar R_t\, \E\left[ \ind[A_t = b] - \pi(b) \right].
+  \end{equation*}
+  In the first term, given $A_t$ the expected reward is $\mu_{A_t}$, so it
+  equals $\E[\mu_{A_t} (\ind[A_t = b] - \pi(b))] = \partial J / \partial
+  H(b)$. The second term is zero, since $A_t \sim \pi$ gives
+  $\E[\ind[A_t = b]] = \pi(b)$: the baseline does not change the expected
+  update.
 \end{proof}
 
 This is the one-state case of the policy gradient theorem
 (\cref{thm:pg}): the baseline reduces the variance without changing the
 expected update, exactly as in actor-critic methods.
 
+\paragraph{Why $\ind[b = A_t] - \pi(b)$ and not just $\ind[b = A_t]$?}
+Where the update comes from explains it. We want to increase $J(H) =
+\sum_a \pi(a) \mu_a$, whose gradient $\sum_a \mu_a\, \partial \pi(a) /
+\partial H(b)$ cannot be computed, since the means $\mu_a$ are unknown. The
+trick is to write it as an expectation over the action played. Since the
+derivative of a logarithm is $\partial \ln \pi(a) = \partial \pi(a) /
+\pi(a)$, we have $\partial \pi(a) = \pi(a)\, \partial \ln \pi(a)$, and
+\begin{equation*}
+  \frac{\partial J}{\partial H(b)} = \sum_a \pi(a)\, \mu_a\, \frac{\partial
+  \ln \pi(a)}{\partial H(b)} = \E_{A \sim \pi}\left[ \mu_A\, \frac{\partial
+  \ln \pi(A)}{\partial H(b)} \right].
+\end{equation*}
+An expectation over the action can be estimated from the action actually
+played: replacing $A$ by $A_t$ and the unknown $\mu_{A_t}$ by the reward
+$R_t$ (minus the baseline, which does not change the expectation) gives
+the update $\alpha (R_t - \bar R_t)\, \partial \ln \pi(A_t) / \partial H(b)$.
+This \emph{log-derivative trick} is the heart of the policy gradient
+methods of \cref{ch:pg}. The factor in \eqref{eq:gradient-bandit} is
+therefore the derivative of $\ln \pi(A_t)$ with respect to $H(b)$: from
+$\ln \pi(a) = H(a) - \ln \sum_c e^{H(c)}$,
+\begin{equation*}
+  \frac{\partial \ln \pi(a)}{\partial H(b)} = \ind[a = b] -
+  \frac{e^{H(b)}}{\sum_c e^{H(c)}} = \ind[a = b] - \pi(b).
+\end{equation*}
+What does the term $-\pi(b)$ change? Compare the expected updates of
+$H(b)$ (divided by $\alpha$) with and without it, for a baseline $\bar R$.
+Two facts are used: $A_t = b$ with probability $\pi(b)$, and then the
+expected reward is $\mu_b$; on average over the actions, the expected
+reward is $\E[R_t] = \sum_a \pi(a) \mu_a = J$.
+\begin{itemize}[nosep]
+  \item \emph{The true gradient:} $\partial J / \partial H(b) = \sum_a
+    \mu_a\, \pi(a) (\ind[a = b] - \pi(b)) = \pi(b) \mu_b - \pi(b) J =
+    \pi(b) (\mu_b - J)$.
+  \item \emph{Without the term:} $\E[(R_t - \bar R)\, \ind[A_t = b]] =
+    \pi(b) (\mu_b - \bar R)$.
+  \item \emph{With the term:} $\E[(R_t - \bar R)(\ind[A_t = b] - \pi(b))]
+    = \pi(b) (\mu_b - \bar R) - \pi(b) (J - \bar R) = \pi(b) (\mu_b -
+    J)$.
+\end{itemize}
+With the term, the baseline $\bar R$ cancels and the expected update is
+exactly the gradient, whatever the baseline. Without it, the expected
+update is the gradient plus $\pi(b) (J - \bar R)$: correct only if the
+baseline happens to equal $J$ exactly. Otherwise the extra term pushes
+every preference in proportion to $\pi(b)$, that is, in favour of the arms
+that are already played often if $\bar R < J$. For example, with two
+arms of means $\mu_1 = 0.4$ and $\mu_2 = 0.6$, a policy $\pi = (0.9,
+0.1)$ and the baseline $0$, the update without the term moves $H(1)$ by
+$0.9 \times 0.4 = 0.36$ and $H(2)$ by $0.1 \times 0.6 = 0.06$ on average
+(times $\alpha$): the worse arm becomes even more likely. With the term,
+since $J = 0.9 \times 0.4 + 0.1 \times 0.6 = 0.42$, the expected updates
+are $\pi(b) (\mu_b - J)$, that is $0.9 \times (-0.02) = -0.018$ and $0.1
+\times 0.18 = 0.018$: the better arm gains, as it should. In words, the
+term $-\pi(b)$ makes every play compare an arm with the arms the policy
+would have played on average, and not with nothing.
+
 \section{Contextual bandits}
+\label{sec:contextual}
 
 In a \emph{contextual bandit}, a context $x_t$ (a user, a page, a
 situation) is observed before choosing the arm, and the reward depends on
