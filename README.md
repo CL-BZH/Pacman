@@ -378,6 +378,41 @@ if the game does not match the agent.
 With ghosts that come back, the statistic "ghosts left at the end" of the training logs is less
 meaningful than in `v1`. On a CPU, the training is about 1.5 times slower than on `v1` (bigger board).
 
+### Results on v2
+
+The A2C/PPO agent saved in `Trainings/A2C/PPO_v2` (the default of `pacman_play.py --game v2`) was
+trained for 30 million steps on a Kaggle GPU (about 1000 steps per second), with the learning rate
+decreasing from 2.5e-4 to 2.5e-5 and the curriculum of the notebooks: the
+ghosts' aggressiveness grows from 30% to 100% of its value over the first 20% of the training. The
+agent wins no game during the first 8 million steps, and 34% of its training games at the end.
+
+A second session (run 2) resumed it for 35 million more steps at the final learning rate
+2.5e-5. (Resuming at 1e-4 made the agent lose ground, from 33% of the games won
+to about 23%.) The games won during the training went from 37% to 42%:
+
+![A2C/PPO training on v2](./Media/a2c_ppo_training_v2.png)
+
+The rates during the training are for actions sampled from the policy. `pacman_play.py` plays the
+best action while ghosts are present, which in `v2` means always, since eaten ghosts come back.
+On the same 1000 games (`python pacman_play.py --game v2 -n 1000 --seed 1 -w 4`):
+
+| Agent | Won | Lost | All 4 power cookies eaten |
+|---|---|---|---|
+| run 1 (30M steps, `PPO_v2`) | **56.3%** | 43.7% | 91.2% |
+| run 2 (run 1 + 35M steps) | 52.8% | 47.2% | 88.9% |
+
+Run 2 wins more of its training games but fewer of the evaluation games: the extra training made the
+sampled policy better without improving its best action. Run 1 stays the `v2` agent.
+
+In both, 95% or more of the lost games are lost to the "other" causes of `--show-losses`: Pacman is
+caught in the middle of the game, not when his power runs out or at the start. The ghosts of `v2` chase
+him all the time: each ghost chases on a move with the probability of its aggressiveness and moves at
+random otherwise, so there is no lasting pause in the chase, unlike the "scatter" periods of the arcade
+game, in which all the ghosts leave for their corners. The look-ahead search does not help either: on
+60 of these games, `--search 20` wins 53.3% of them and the agent alone 54.2% (the search changes 2.9%
+of the moves). Expert iteration, which needs the search to find better moves than the agent, is
+therefore not a way forward on `v2` as it was on `v1`.
+
 ## Some explanations about the software
 
 ### The files
