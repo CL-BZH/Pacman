@@ -351,6 +351,11 @@ class A2C_PacmanAgent(PacmanAgent):
     - Optional curriculum: the ghosts' aggressiveness starts at
       'curriculum_start' times its configured value and increases linearly to
       the full value over the first 'curriculum_fraction' of the training.
+    - Optional late starts (exploring starts): copies of the agent's own games are
+      taken when they reach a number of cookies left drawn in 'late_start_cookies',
+      and a new game starts from one of these copies with probability
+      'late_start_prob' instead of from the beginning, so that the end of the game,
+      where most games are lost, is practised more often.
     '''
     def __init__(self, pacman_envs: List[PacmanEnvironment], gamma=0.99, initial_lr=2.5e-4, n_frames=2,
                  gae_lambda=0.95, entropy_coef=0.03, value_loss_coef=0.5, ppo_epochs=4, n_minibatches=4,
@@ -381,6 +386,7 @@ class A2C_PacmanAgent(PacmanAgent):
 
     def run_episodes(self, total_steps=20_000_000, n_steps=128, episode_max_length=1000,
                      min_lr=None, curriculum_fraction=0., curriculum_start=0.3,
+                     late_start_prob=0., late_start_cookies=(10, 40), late_start_buffer=2000,
                      log_interval=500, save_interval=1_000_000, save_dir="./Tmp"):
         '''
         Train the agent.
@@ -391,6 +397,13 @@ class A2C_PacmanAgent(PacmanAgent):
             episode_max_length: games longer than this are aborted (truncated, not terminal).
             min_lr: if set, the learning rate decays linearly from initial_lr to min_lr.
             curriculum_fraction, curriculum_start: see the class description (0 = no curriculum).
+            late_start_prob: probability that a new game starts from a copy of an earlier game
+                (0 = always from the beginning). The copies are taken from the games started
+                from the beginning, when they reach a number of cookies left drawn uniformly
+                in late_start_cookies (min, max); late_start_buffer copies are kept (a new copy
+                replaces a random one when the buffer is full). The log tells the two kinds of
+                games apart ("late_start"); the printed rates are those of the games started
+                from the beginning.
             log_interval: print statistics every 'log_interval' finished games.
             save_interval: save the network every 'save_interval' steps.
         '''
@@ -408,10 +421,32 @@ class A2C_PacmanAgent(PacmanAgent):
                 return 1.
             return curriculum_start + (1. - curriculum_start) * min(1., step / (curriculum_fraction * total_steps))
 
+        def cookies_left(env):
+            return len(env.cookies) + len(env.power_cookies)
+
+        # Late starts: copies of games (env.clone()) and, for each environment, whether its game
+        # started late and the number of cookies left at which to copy it (None: no copy)
+        snapshots = []
+        late_game = [False] * n_envs
+        copy_at = [None] * n_envs
+
         def new_game(env_idx, scale):
+            env = self.pacman_envs[env_idx]
             # Each environment gets its own list (the config's list is shared)
-            self.pacman_envs[env_idx].ghost_aggressiveness_levels = [a * scale for a in base_levels[env_idx]]
-            self.reset_env(env_idx)
+            levels = [a * scale for a in base_levels[env_idx]]
+            env.ghost_aggressiveness_levels = levels
+            if late_start_prob > 0 and len(snapshots) >= 100 and np.random.random() < late_start_prob:
+                # Continue a copy of an earlier game (copied again: the snapshot stays unchanged)
+                env.__dict__.update(snapshots[np.random.randint(len(snapshots))].clone().__dict__)
+                env.ghost_aggressiveness_levels = levels
+                for ghost in env.ghosts + env.house_ghosts + env.dead_ghosts:
+                    ghost.aggressiveness = levels[ghost.id]
+                late_game[env_idx], copy_at[env_idx] = True, None
+            else:
+                self.reset_env(env_idx)
+                late_game[env_idx] = False
+                copy_at[env_idx] = (np.random.randint(late_start_cookies[0], late_start_cookies[1] + 1)
+                                    if late_start_prob > 0 else None)
             return self.stacked_observation(env_idx, reset=True)
 
         scale = curriculum_scale(0)
@@ -452,6 +487,13 @@ class A2C_PacmanAgent(PacmanAgent):
                     obs = self.stacked_observation(env_idx)
                     done = env.end
                     truncated = (not done) and ep_lengths[env_idx] >= episode_max_length
+                    if copy_at[env_idx] is not None and not (done or truncated) \
+                            and cookies_left(env) <= copy_at[env_idx]:
+                        copy_at[env_idx] = None
+                        if len(snapshots) < late_start_buffer:
+                            snapshots.append(env.clone())
+                        else:
+                            snapshots[np.random.randint(late_start_buffer)] = env.clone()
 
                     r = reward * reward_scale
                     if truncated:
@@ -466,7 +508,7 @@ class A2C_PacmanAgent(PacmanAgent):
                                         "won": bool(done and not env.dead), "lost": bool(env.dead),
                                         "aborted": bool(truncated), "ghosts_left": env.n_ghosts_in_game,
                                         "power_cookies_eaten": env.n_eaten_power_cookies,
-                                        "aggressiveness_scale": scale})
+                                        "aggressiveness_scale": scale, "late_start": late_game[env_idx]})
                         obs = new_game(env_idx, scale)
                         ep_rewards[env_idx] = 0.
                         ep_lengths[env_idx] = 0
@@ -487,7 +529,10 @@ class A2C_PacmanAgent(PacmanAgent):
             # Logging
             if len(history) - logged >= log_interval:
                 logged = len(history)
-                recent = history[-log_interval:]
+                # Rates of the games started from the beginning (comparable with a training
+                # without late starts)
+                recent = [h for h in history[-log_interval:] if not h["late_start"]] or history[-log_interval:]
+                late = [h for h in history[-log_interval:] if h["late_start"]]
                 now = time.time()
                 sps = (step - last_log_step) / (now - last_log_time)
                 last_log_time, last_log_step = now, step
@@ -495,6 +540,9 @@ class A2C_PacmanAgent(PacmanAgent):
                 u = {k: np.mean([s[k] for s in update_stats]) for k in update_stats[0]}
                 update_stats = []
                 curriculum_str = f"aggr x{scale:.2f} | " if curriculum_fraction > 0 else ""
+                if late_start_prob > 0:
+                    curriculum_str += (f"late starts {100*len(late)/log_interval:4.1f}% won "
+                                       f"{100*np.mean([h['won'] for h in late]) if late else 0:5.1f}% | ")
                 print(f"{timedelta(seconds=int(now - start))} | step {step:>9} | games {len(history):>7} | "
                       f"{curriculum_str}reward {avg('reward'):7.2f} | "
                       f"won {100*avg('won'):5.1f}% lost {100*avg('lost'):5.1f}% aborted {100*avg('aborted'):4.1f}% | "
