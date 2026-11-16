@@ -380,11 +380,11 @@ meaningful than in `v1`. On a CPU, the training is about 1.5 times slower than o
 
 ### Results on v2
 
-The A2C/PPO agent saved in `Trainings/A2C/PPO_v2` (the default of `pacman_play.py --game v2`) was
-trained for 30 million steps on a Kaggle GPU (about 1000 steps per second), with the learning rate
-decreasing from 2.5e-4 to 2.5e-5 and the curriculum of the notebooks: the
-ghosts' aggressiveness grows from 30% to 100% of its value over the first 20% of the training. The
-agent wins no game during the first 8 million steps, and 34% of its training games at the end.
+The first A2C/PPO agent on `v2` (run 1) was trained for 30 million steps on a Kaggle GPU (about 1000
+steps per second), with the learning rate decreasing from 2.5e-4 to 2.5e-5 and the curriculum of the
+notebooks: the ghosts' aggressiveness grows from 30% to 100% of its value over the first 20% of the
+training. The agent wins no game during the first 8 million steps, and 34% of its training games at
+the end.
 
 A second session (run 2) resumed it for 35 million more steps at the final learning rate
 2.5e-5. (Resuming at 1e-4 made the agent lose ground, from 33% of the games won
@@ -392,26 +392,75 @@ to about 23%.) The games won during the training went from 37% to 42%:
 
 ![A2C/PPO training on v2](./Media/a2c_ppo_training_v2.png)
 
+A third session (run 3, see [Late starts](#late-starts) below) resumed run 1 for 20 million steps
+with games that start late. Run 3 is the agent saved in `Trainings/A2C/PPO_v2` (the default of
+`pacman_play.py --game v2`).
+
 The rates during the training are for actions sampled from the policy. `pacman_play.py` plays the
 best action while ghosts are present, which in `v2` means always, since eaten ghosts come back.
-On the same 1000 games (`python pacman_play.py --game v2 -n 1000 --seed 1 -w 4`):
+On the same 3000 games (`python pacman_play.py --game v2 -n 3000 --seed 1001 -w 4`):
 
-| Agent | Won | Lost | All 4 power cookies eaten |
-|---|---|---|---|
-| run 1 (30M steps, `PPO_v2`) | **56.3%** | 43.7% | 91.2% |
-| run 2 (run 1 + 35M steps) | 52.8% | 47.2% | 88.9% |
+| Agent | Won |
+|---|---|
+| run 1 (30M steps) | 50.1% |
+| run 2 (run 1 + 35M steps) | 50.9% |
+| run 3 (run 1 + 20M steps with late starts, `PPO_v2`) | **53.9%** |
 
-Run 2 wins more of its training games but fewer of the evaluation games: the extra training made the
-sampled policy better without improving its best action. Run 1 stays the `v2` agent.
+Run 2 wins more of its training games but not more of the evaluation games: the extra training
+made the sampled policy better without improving its best action.
 
-In both, 95% or more of the lost games are lost to the "other" causes of `--show-losses`: Pacman is
-caught in the middle of the game, not when his power runs out or at the start. The ghosts of `v2` chase
-him all the time: each ghost chases on a move with the probability of its aggressiveness and moves at
-random otherwise, so there is no lasting pause in the chase, unlike the "scatter" periods of the arcade
-game, in which all the ghosts leave for their corners. The look-ahead search does not help either: on
-60 of these games, `--search 20` wins 53.3% of them and the agent alone 54.2% (the search changes 2.9%
-of the moves). Expert iteration, which needs the search to find better moves than the agent, is
-therefore not a way forward on `v2` as it was on `v1`.
+On 3000 games, the standard error of a win rate is about 0.9 points, and that of the difference
+between two agents about 1.3 points. A first comparison on 1000 games (`--seed 1`) gave 56.3% to
+run 1 and 52.8% to run 2, and run 1 was chosen on these same games: a lucky set of games, made
+luckier by the choice. Agents that are a few points apart must be compared on several thousand
+games, and on games that were not used to choose between them.
+
+#### Where the games are lost
+
+95% or more of the lost games are lost to the "other" causes of `--show-losses`: Pacman is caught
+in the middle of the game, not when his power runs out or at the start. The ghosts of `v2` chase
+him all the time: each ghost chases on a move with the probability of its aggressiveness and moves
+at random otherwise, so there is no lasting pause in the chase, unlike the "scatter" periods of the
+arcade game, in which all the ghosts leave for their corners.
+
+The end of the game is where run 1 is weakest. Half of its lost games are lost with 22 cookies left
+or fewer (out of 162). Per move, Pacman is caught 5 to 6 times more often at the end of the game
+than at the start, and the last cookies are slow to eat: 9.1 moves per cookie for the last 10,
+against 1.7 for the first 40. This is caution, not wandering: in the end game a ghost is within 3
+moves of Pacman on 71% of the moves, and he runs away from it. When the ghosts are far, he heads
+for a cookie about as often as at the start of the game.
+
+Early in the game, Pacman lets the two most aggressive ghosts come close and then escapes to a part
+of the maze where there are none, eating cookies on the way. In the end game the empty part of the
+maze has usually been cleared already. Where the last 10 cookies are, and where Pacman is caught
+(1000 games of run 1):
+
+![Where the v2 games are lost](./Media/v2_endgame_heatmap.png)
+
+The ghosts leave the house by the door above it, into the corridor just above the house. Pacman
+clears the bottom of the maze first and leaves the top corners for the end, and to reach them he
+has to cross the junctions of that corridor, where most of the games are lost.
+
+The look-ahead search does not help: on 60 games, `--search 20` wins 53.3% of them and the agent
+alone 54.2% (the search changes 2.9% of the moves). Expert iteration, which needs the search to find
+better moves than the agent, is therefore not a way forward on `v2` as it was on `v1`.
+
+#### Late starts
+
+To practise the end of the game more often, `run_episodes` of the A2C agent can start some games
+late (`late_start_prob`, `LATE_START_PROB` in the notebooks). The games started from the beginning
+are copied (`env.clone()`) when they reach a number of cookies left drawn between 10 and 40, and a
+new game starts from one of the last 2000 copies with probability `late_start_prob` instead of from
+the beginning. The copies come from the agent's own games, so the cookies left are where his own
+play leaves them, and they follow the agent as it learns. Nothing in the rewards or in the rules
+changes: this is the "exploring starts" idea of Monte Carlo control.
+
+Run 3 resumed run 1 for 20 million steps with `LATE_START_PROB = 0.25` at the learning rate 2.5e-5.
+The games that start late are won more and more often (from 58% to 64%), and the agent wins 53.9%
+of the 3000 evaluation games, 3.8 points more than run 1 and 3.0 more than run 2, which trained
+longer without late starts:
+
+![A2C/PPO training on v2 with late starts](./Media/a2c_ppo_training_v2_late_starts.png)
 
 ## Some explanations about the software
 
