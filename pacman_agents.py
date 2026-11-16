@@ -387,7 +387,8 @@ class A2C_PacmanAgent(PacmanAgent):
     def run_episodes(self, total_steps=20_000_000, n_steps=128, episode_max_length=1000,
                      min_lr=None, curriculum_fraction=0., curriculum_start=0.3,
                      late_start_prob=0., late_start_cookies=(10, 40), late_start_buffer=2000,
-                     log_interval=500, save_interval=1_000_000, save_dir="./Tmp"):
+                     log_interval=500, save_interval=1_000_000, save_dir="./Tmp",
+                     start_step=0, max_seconds=None, history=None):
         '''
         Train the agent.
         parameters:
@@ -405,7 +406,17 @@ class A2C_PacmanAgent(PacmanAgent):
                 games apart ("late_start"); the printed rates are those of the games started
                 from the beginning.
             log_interval: print statistics every 'log_interval' finished games.
-            save_interval: save the network every 'save_interval' steps.
+            save_interval: save the network every 'save_interval' steps (and, for a continuation,
+                Adam's state in pacman_a2c_optimizer.pth and the progress in
+                pacman_a2c_progress.json).
+            start_step, max_seconds, history: to split a training over several sessions.
+                The training stops after 'max_seconds' (saving a checkpoint); a training
+                interrupted after a checkpoint (time limit, or session lost) is continued
+                with 'start_step' (the step of the checkpoint) and 'history' (the games already
+                played): the learning rate and the curriculum continue where they stopped
+                (load the network, and Adam's state with A2C.load_optimizer, before). initial_lr
+                must be the one of the first session. The copies of the late starts are not
+                saved: they are taken again.
         '''
         n_envs = self.n_envs
         T = n_steps
@@ -461,14 +472,29 @@ class A2C_PacmanAgent(PacmanAgent):
 
         ep_rewards = np.zeros(n_envs)
         ep_lengths = np.zeros(n_envs, dtype=np.int64)
-        history = []
+        history = list(history) if history is not None else []
         update_stats = []
+        step, logged = start_step, len(history)
+        next_save = (start_step // save_interval + 1) * save_interval
         lr = self.lr
-        step, next_save, logged = 0, save_interval, 0
+        if min_lr is not None:
+            lr = self.lr + min(1., step / total_steps) * (min_lr - self.lr)
+            self.A2C.set_lr(lr)
         start = time.time()
-        last_log_time, last_log_step = start, 0
+        last_log_time, last_log_step = start, start_step
+
+        def save_checkpoint(name):
+            self.save(str(save_dir / name))
+            self.A2C.save_optimizer(str(save_dir / "pacman_a2c_optimizer.pth"), step)
+            pd.DataFrame(history).to_csv(save_dir / "pacman_a2c_training_log.csv", index=False)
+            with open(save_dir / "pacman_a2c_progress.json", "w") as f:
+                json.dump({"step": int(step), "total_steps": int(total_steps), "initial_lr": self.lr,
+                           "min_lr": min_lr, "curriculum_fraction": curriculum_fraction,
+                           "curriculum_start": curriculum_start}, f)
 
         while step < total_steps:
+            if max_seconds is not None and time.time() - start > max_seconds:
+                break
             scale = curriculum_scale(step)
 
             # Collect a rollout of T steps in every environment
@@ -553,15 +579,19 @@ class A2C_PacmanAgent(PacmanAgent):
             # Checkpoints
             if step >= next_save:
                 next_save += save_interval
-                self.save(str(save_dir / f"pacman_a2c_{step}.pth"))
-                pd.DataFrame(history).to_csv(save_dir / "pacman_a2c_training_log.csv", index=False)
+                save_checkpoint(f"pacman_a2c_{step}.pth")
 
         # Restore the configured aggressiveness
         for env, levels in zip(self.pacman_envs, base_levels):
             env.ghost_aggressiveness_levels = levels
-        self.save(str(save_dir / "pacman_a2c_final.pth"))
-        pd.DataFrame(history).to_csv(save_dir / "pacman_a2c_training_log.csv", index=False)
-        print(f"Training done: {step} steps, {len(history)} games, {timedelta(seconds=int(time.time() - start))}")
+        if step < total_steps:
+            # Time limit of the session: continue in another session
+            save_checkpoint(f"pacman_a2c_{step}.pth")
+            print(f"Session time limit reached at step {step} of {total_steps} "
+                  f"({timedelta(seconds=int(time.time() - start))}): continue in a new session")
+        else:
+            save_checkpoint("pacman_a2c_final.pth")
+            print(f"Training done: {step} steps, {len(history)} games, {timedelta(seconds=int(time.time() - start))}")
         return history
 
     def save(self, filename):

@@ -154,6 +154,19 @@ class A2C:
     def load(self, filename):
         self.a2c_net.load_state_dict(torch.load(filename, map_location=self.device))
 
+    def save_optimizer(self, filename, step):
+        '''Adam's state (running averages), to continue a training in another session.'''
+        torch.save({"step": int(step), "optimizer": self.optimizer.state_dict()}, filename)
+
+    def load_optimizer(self, filename, step):
+        '''Load Adam's state saved at 'step'; returns False (and loads nothing) if it was saved
+        at another step.'''
+        saved = torch.load(filename, map_location=self.device)
+        if saved["step"] != step:
+            return False
+        self.optimizer.load_state_dict(saved["optimizer"])
+        return True
+
     def set_lr(self, lr):
         for param_group in self.optimizer.param_groups:
             param_group['lr'] = lr
