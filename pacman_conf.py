@@ -44,4 +44,10 @@ class PacmanConf:
     ghost_house_exit_prob: float = 0.1  # When Pacman has no power, a ghost in the house leaves it
                                         # with this probability at each move (memoryless: the time
                                         # spent in the house is not hidden information)
+    cookie_reward_with_power: bool = False   # A cookie eaten while Pacman has power gives its reward
+                                             # (False in game v1: only once no ghost is left, so that
+                                             # with power the ghosts are hunted first)
+    power_cookie_ghost_bonus: bool = True    # The reward for a power cookie grows when a ghost is
+                                             # close (see PacmanEnvironment); False: fixed reward
+                                             # eat_power_cookie_reward
 

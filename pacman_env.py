@@ -36,6 +36,8 @@ class PacmanEnvironment:
         self.max_power_credit = config.max_power_credit
         self.eat_cookie_reward = config.eat_cookie_reward
         self.eat_power_cookie_reward = config.eat_power_cookie_reward
+        self.cookie_reward_with_power = config.cookie_reward_with_power
+        self.power_cookie_ghost_bonus = config.power_cookie_ghost_bonus
         self.eat_ghost_reward = config.eat_ghost_reward
         self.living_cost = config.living_cost
         self.lose_reward = config.lose_reward 
@@ -194,9 +196,10 @@ class PacmanEnvironment:
         if pos in self.cookies:
             self.last_eaten_cookie = {'pos': pos, 'power': False, 'steps': self.n_steps}
             self.cookies.remove(pos)
-            if self.power_credit == 0 or self.n_ghosts_in_game == 0:
+            if self.power_credit == 0 or self.n_ghosts_in_game == 0 or self.cookie_reward_with_power:
                 # Eating a cookie gives a positive reward only if
                 # Pacman has no power or if he has power but there is no more ghost to eat
+                # (always with cookie_reward_with_power)
                 reward = self.eat_cookie_reward
         elif pos in self.power_cookies:
             self.last_eaten_cookie = {'pos': pos, 'power': True, 'steps': self.n_steps}
@@ -206,6 +209,8 @@ class PacmanEnvironment:
                 # When there is no giost left then eating a power cookie is
                 # the same as eating a normal cookie
                 reward = self.eat_cookie_reward
+            elif not self.power_cookie_ghost_bonus:
+                reward = self.eat_power_cookie_reward
             else:
                 # The benefit of eating a power cookie decreases wrt the
                 # current power credit pacman owns

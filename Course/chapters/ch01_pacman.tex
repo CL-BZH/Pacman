@@ -280,7 +280,10 @@ ghosts that start in a \emph{ghost house} in the middle of the maze and
 \emph{come back} to it when eaten (once Pacman's power has ended, each
 ghost in the house leaves it with probability $0.1$ at each move), and
 ghosts whose random moves prefer their current direction
-(\cref{rem:ghost-heading}). Unless stated
+(\cref{rem:ghost-heading}). Since there is always a ghost left, two rewards
+of \cref{tab:rewards} change: a cookie eaten with power keeps its reward
+$+0.8$, and a power cookie is worth a fixed $1.3$, without the bonus of
+\eqref{eq:power-reward} for a close ghost. Unless stated
 otherwise, the examples of this course use game \code{v1}, on which all the
 results were obtained.
 

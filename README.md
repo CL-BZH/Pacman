@@ -337,11 +337,19 @@ makes the whole game matter:
 | Power duration | 12 moves | 10 moves |
 | Reward for eating a ghost | 20 | 5 |
 | Penalty per ghost left at the end | -5 | 0 |
+| Reward for a cookie eaten with power | 0 while a ghost is left | 0.8 (\*\*) |
+| Reward for a power cookie | 1.3, up to 10 times more when a ghost is close | 1.3 (\*\*) |
 | Random moves of the ghosts prefer their current direction | no (\*) | yes (weight 1.5) |
 
 (\*) The code intends a weight 1.5 for the move that keeps a ghost's direction, but in `v1` it
 compares a position with a direction letter, which is never true: the random moves are uniform.
 The fix is enabled by `PacmanConf.ghost_keep_direction`, so that the games of `v1` are unchanged.
+
+(\*\*) Since the eaten ghosts come back, there is always a ghost left: with the rewards of `v1`, the
+cookies eaten with power were worth nothing and the power cookies were worth more with a ghost close,
+which made Pacman hunt the ghosts with his power instead of clearing the maze. These two rewards were
+changed (`PacmanConf.cookie_reward_with_power`, `PacmanConf.power_cookie_ghost_bonus`) after runs 1 to
+3 of the A2C agent (see [Results on v2](#results-on-v2)), which were trained with the rewards of `v1`.
 
 The other rewards are the same. `pacman_map4` is left-right symmetric (as required by the symmetric
 network), has no dead ends and no open areas.

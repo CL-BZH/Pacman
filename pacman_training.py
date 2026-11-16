@@ -38,6 +38,9 @@ pacman_conf_v1 = PacmanConf(playground = pacman_map3,
                             penalty_per_ghost = -5)
 
 # Game "v2": bigger maze, eaten ghosts come back, shorter power, small reward for eating a ghost.
+# Since the ghosts always come back, the cookies eaten with power keep their reward and the reward
+# for a power cookie does not depend on the distance of the ghosts (runs 1 to 3 of the A2C agent
+# were trained without these two changes, which made Pacman hunt the ghosts with power).
 # The ghosts start in the ghost house and go back to it when eaten; they leave it (when Pacman has
 # no power) with probability 0.1 at each move.
 pacman_conf_v2 = PacmanConf(playground = pacman_map4,
@@ -58,7 +61,9 @@ pacman_conf_v2 = PacmanConf(playground = pacman_map4,
                             ghost_keep_direction = True,
                             ghost_start = "house",
                             ghost_respawn = "house",
-                            ghost_house_exit_prob = 0.1)
+                            ghost_house_exit_prob = 0.1,
+                            cookie_reward_with_power = True,
+                            power_cookie_ghost_bonus = False)
 
 GAMES = {"v1": pacman_conf_v1, "v2": pacman_conf_v2}
 pacman_conf = pacman_conf_v1 # default game (the one of the trained agents in Trainings/)
