@@ -15,6 +15,9 @@ import heapq
 
 from enum import Enum
 
+# Shortest paths of the chasing ghosts, by (maze, start, destination) (see PacmanGhost._find_path_to)
+_PATH_CACHE = {}
+
 class EdibleGhostBehaviors(Enum):
     FLEE_SLOW = 1
     FLEE_FAST = 2
@@ -135,7 +138,15 @@ class PacmanGhost:
                     
             return path
                 
-        return a_star_search(dest)
+        # The shortest path depends only on the maze, the ghost's cell and Pacman's cell: it is
+        # computed once for each (start, destination) pair (the searches, which simulate the
+        # game many times, ask for the same paths again and again)
+        key = (id(self.map), tuple(int(c) for c in self.pos), tuple(int(c) for c in dest))
+        path = _PATH_CACHE.get(key)
+        if path is None:
+            path = a_star_search(dest)
+            _PATH_CACHE[key] = path
+        return path
 
     def move(self, env):
         ghost_pos = self.pos

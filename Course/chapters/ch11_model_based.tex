@@ -321,6 +321,7 @@ it models only what matters for planning. MuZero matched AlphaZero in board
 games and set the state of the art on Atari at the time.
 
 \section{What does the search know about the ghosts?}
+\label{sec:ghost-models}
 
 A copy of the environment simulates the ghosts with the game's own code,
 which the agent never sees. Using it would give the search a \emph{perfect
@@ -475,6 +476,153 @@ simulations, cannot escape either. Going further would require a deeper
 search (MCTS), or, following AlphaZero, alternating the improvement of the
 search and of the network over many more iterations.
 
+\section{Game v2: MCTS against chance}
+\label{sec:mcts-v2}
+
+On game \code{v2} (\cref{sec:v2}) the best PPO agent wins about $64\%$ of
+the games, and the short search of this chapter does not help: on $60$
+games, an earlier \code{v2} agent won $53\%$ of them with
+\code{-{}-search 20} and $54\%$ without.
+Is $64\%$ good? Nothing so far tells what a strong player could do: with
+one life and three ghosts that never stop chasing, some games may be lost
+whatever Pacman does. A slow but strong player answers the question: if it
+wins much more, the agent is the bottleneck; if not, the game is.
+
+\paragraph{The ghosts are chance, not an opponent.} In Hex
+(\cref{rem:mcts-two-players}) the opponent chooses its moves to win, the
+players alternate in the tree and the backup flips the result at each
+level. In Pacman the ghosts choose nothing: on each move a ghost chases with
+the probability of its aggressiveness and moves at random otherwise. They
+are chance, as the dice of backgammon. The value of a move is therefore an
+\emph{average} over the ghosts' behaviours, not a minimum; a search that
+assumed the worst ghost moves would see traps everywhere.
+
+\begin{definition}{Open-loop MCTS}{open-loop-mcts}
+  In open-loop MCTS the tree holds only the agent's action sequences. Each
+  simulation starts from a copy of the real state, draws fresh random
+  outcomes, and plays the sequence of the tree's path; the statistics
+  $N(a_{1:d})$ and $\hat q(a_{1:d})$ of a node are averages over the random
+  outcomes met along that path. The move played is the most visited action
+  of the root.
+\end{definition}
+
+In Pacman, the open-loop tree loses nothing on Pacman's side: his moves are
+deterministic, so a sequence of moves always leads him to the same cells;
+only the ghosts differ from one simulation to the next.
+
+\begin{remark}{The reward belongs to the move}{edge-reward}
+  The value of a node is the return of the \emph{move that leads to it},
+  its own reward included:
+  \begin{equation}
+    G_d = r_d + \gamma\, G_{d+1}, \qquad G_D = \text{value of the leaf},
+  \end{equation}
+  where $r_d$ is the reward of the $d$-th move of the path and $G_d$ is
+  added to the statistics of the node it leads to. A first version of the
+  repository's search added to each node the return \emph{from} that node
+  on, without the reward of the move into it. A move onto a ghost ends the
+  game: its node is terminal, of value $0$, and the penalty $-35$ was
+  counted nowhere. In a tight spot, where every safe move had a slightly
+  negative outlook, walking into the ghost looked best: the search won $3$
+  of $20$ games that the agent alone won $14$ times.
+\end{remark}
+
+\paragraph{The search of the repository.} \code{pacman\_mcts.py} combines
+the PUCT rule of AlphaZero, with the PPO agent's policy as prior, and short
+rollouts: after a new node the agent plays greedily for $H = 10$ moves, then
+its value estimates the rest of the game. The simulations copy the real game
+(\code{env.clone()}) and move the ghosts with the game's own code, with
+random numbers of their own: the search uses the \code{exact} ghost model
+of \cref{sec:ghost-models}, a perfect model, as an estimate of what the
+game allows requires. The search is used only when a
+ghost is within $6$ cells (in $\abs{\Delta i} + \abs{\Delta j}$); elsewhere
+the agent plays alone.
+
+\begin{algobox}{One wave of \code{pacman\_mcts.py} ($B$ simulations)}
+  \begin{algorithmic}[1]
+    \For{each of the $B$ simulations of the wave}
+      \State copy the real game; take the simulation's own random state
+      \State descend the tree with PUCT, playing each chosen move on the
+        copy; add a \emph{virtual loss} to each move taken
+      \State stop at a node not yet expanded, or when the game ends
+    \EndFor
+    \For{$h = 0, \dots, H$} \Comment{one batched network call per step}
+      \State evaluate the policy and the value of all the simulations still
+        running
+      \State at $h = 0$: expand the new nodes, with the policy as prior
+      \State if $h < H$: each simulation plays the agent's greedy move;
+        else: add the discounted value
+    \EndFor
+    \State backup: for each simulation, add $G_d$ to the nodes of its path
+      and remove the virtual losses
+  \end{algorithmic}
+\end{algobox}
+
+\begin{intuition}
+  Evaluating one state at a time, the network took more than half of the
+  search's time. A wave of $16$ simulations evaluates its $16$ states in
+  one call, at little more than the cost of one. The catch is that the
+  simulations of a wave must be chosen before any of them is evaluated: the
+  virtual loss pretends that each move being explored has just lost, so
+  that the next simulations of the wave prefer other moves instead of all
+  piling into the same branch. With the cache of the ghosts' shortest
+  paths, a search of $100$ simulations is about $2.6$ times faster.
+\end{intuition}
+
+Comparing two players on the same games is far more precise than comparing
+their win rates on different games: only the games where they disagree
+carry information.
+
+\begin{proposition}{Comparing two players on the same games}{sign-test}
+  Two players play the same $n$ games. Let $b$ be the number of games won
+  by the first and lost by the second, and $c$ the converse. If the two
+  players are equally strong, each disagreement is equally likely to go
+  either way, independently of the others, and given $b + c = m$, $b$
+  follows the binomial law $\mathrm{Bin}(m, 1/2)$. The probability of a
+  split at least as lopsided as the one observed is
+  \begin{equation}
+    p = \frac{1}{2^m} \sum_{k = b}^{m} \binom{m}{k} \quad (b > m / 2).
+  \end{equation}
+\end{proposition}
+
+\begin{proof}
+  The games won or lost by both players are the same for the two and say
+  nothing about which is stronger. Under the hypothesis, each game where
+  the players disagree is won by the first with probability $1/2$,
+  independently, so the number of such games among the $m$ disagreements
+  is $\mathrm{Bin}(m, 1/2)$; $p$ is its upper tail at $b$.
+\end{proof}
+
+\begin{pacman}{How good can a player be at v2?}{mcts-ceiling}
+  On the same $100$ games, with $100$ simulations per searched move:
+  \begin{center}
+    \begin{tabular}{@{}lc@{}}
+      \toprule
+      Same $100$ games & Won \\
+      \midrule
+      PPO agent alone & $68\%$ \\
+      agent with MCTS & $82\%$ \\
+      \bottomrule
+    \end{tabular}
+  \end{center}
+  The MCTS player wins $26$ games that the agent loses and loses $12$ that
+  the agent wins: $p \approx 0.017$ (\cref{prop:sign-test}). All the
+  remaining losses are traps in the middle of the game. With a modest
+  search, $82\%$ is a lower bound of what the game allows: the agent, not
+  the game, is the bottleneck.
+\end{pacman}
+
+\paragraph{The search as teacher.} The search is far too slow to play
+(about $8$ minutes per game on one core), but it can teach. Expert iteration
+(\code{pacman\_expert.py -{}-teacher mcts}) takes the AlphaZero form: at each
+searched move of the agent's games, the target is the search's visit
+distribution $\boldsymbol{\pi} \propto N(\cdot)$ over the moves of the root,
+and the policy minimises the cross-entropy $-\boldsymbol{\pi}^\top \log
+\mathbf{p}_\theta$, with the larger weight where the search's most visited
+move differs from the agent's. A one-hot $\boldsymbol{\pi}$, the target of
+the look-ahead search, gives back the loss of the previous section. The
+visit distribution says more: it tells how good the other moves are, not
+only which one is best.
+
 \section{Summary}
 
 \begin{itemize}[nosep]
@@ -487,4 +635,8 @@ search and of the network over many more iterations.
   \item On Pacman, a depth-one search with a safety rule raises the win
     rate from $96\%$ to about $98\%$, without knowing the ghosts' code;
     expert iteration transfers part of this gain to the network alone.
+  \item On game \code{v2}, where the ghosts are chance rather than an
+    opponent, an open-loop MCTS guided by the agent wins $82\%$ of the games
+    that the agent alone wins $68\%$ of: the agent is the bottleneck, and
+    the search becomes its teacher.
 \end{itemize}

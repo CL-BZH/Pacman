@@ -16,6 +16,7 @@ Examples:
     python pacman_play.py -n 200 --show-losses  # replay (with display) up to 5 lost games out of 200
     python pacman_play.py -n 200 --search 20    # with look-ahead search when a ghost is close
     python pacman_play.py -n 1000 --search 20 -w 8  # same, 8 games in parallel
+    python pacman_play.py -g v2 -n 100 --mcts 100 -w 4  # with Monte Carlo tree search near the ghosts
     python pacman_play.py --help                # all the options
 """
 
@@ -36,6 +37,7 @@ import sys
 import time
 from collections import defaultdict
 from pacman_search import LookaheadSearch, snapshot
+from pacman_mcts import MCTS
 
 
 # Default trained agents (relative to the repository folder)
@@ -212,6 +214,13 @@ def parse_args():
                              "Pacman with a probability estimated from the ghosts' observed moves")
     parser.add_argument("--radius", type=int, default=5,
                         help="with --search, search only when a ghost is at most this distance from Pacman")
+    parser.add_argument("--mcts", type=int, default=0, metavar="N",
+                        help="Monte Carlo tree search with N simulations per move when a ghost is close "
+                             "(A2C agent, see pacman_mcts.py); 0 = no MCTS")
+    parser.add_argument("--mcts-horizon", type=int, default=10,
+                        help="with --mcts, moves played by the agent after a new node before its value")
+    parser.add_argument("--mcts-radius", type=int, default=6,
+                        help="with --mcts, search only when a ghost is at most this distance from Pacman")
     parser.add_argument("-w", "--workers", type=int, default=1,
                         help="number of games played in parallel (CPU processes); useful with --search")
     parser.add_argument("--seed", type=int, default=None,
@@ -284,7 +293,11 @@ def make_player(args, checkpoint, quiet=False):
         sys.exit(f"{checkpoint} does not fit the game {args.game} (it was trained on another game"
                  f" or with another number of frames): try --game {' or --game '.join(other)}")
     search = None
-    if args.search > 0:
+    if args.mcts > 0:
+        if args.agent != "a2c":
+            raise ValueError("--mcts needs the A2C agent (policy and value)")
+        search = MCTS(agent, n_simulations=args.mcts, horizon=args.mcts_horizon, radius=args.mcts_radius)
+    elif args.search > 0:
         search = LookaheadSearch(agent, n_simulations=args.search, horizon=args.horizon, radius=args.radius,
                                  mode=args.search_mode, ghost_model=args.ghost_model)
     return env, agent, stockastic, search
@@ -349,7 +362,10 @@ def main():
     player = make_player(args, checkpoint)
     env, agent, stockastic, search = player
     print(f"Loaded {checkpoint}")
-    if search is not None:
+    if isinstance(search, MCTS):
+        print(f"Monte Carlo tree search: {args.mcts} simulations per move, horizon {args.mcts_horizon}, "
+              f"radius {args.mcts_radius}")
+    elif search is not None:
         print(f"Look-ahead search ({args.search_mode}, {args.ghost_model} ghosts): {args.search} "
               f"simulations per move, horizon {args.horizon}, radius {args.radius}")
 

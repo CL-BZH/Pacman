@@ -403,8 +403,8 @@ to about 23%.) The games won during the training went from 37% to 42%:
 ![A2C/PPO training on v2](./Media/a2c_ppo_training_v2.png)
 
 A third session (run 3, see [Late starts](#late-starts) below) resumed run 1 for 20 million steps
-with games that start late. Run 3 is the agent saved in `Trainings/A2C/PPO_v2` (the default of
-`pacman_play.py --game v2`).
+with games that start late. Run 3 was the `v2` agent until the rewards of `v2` were changed (see
+[New rewards](#new-rewards-runs-4-and-5) below).
 
 The rates during the training are for actions sampled from the policy. `pacman_play.py` plays the
 best action while ghosts are present, which in `v2` means always, since eaten ghosts come back.
@@ -453,7 +453,9 @@ has to cross the junctions of that corridor, where most of the games are lost.
 
 The look-ahead search does not help: on 60 games, `--search 20` wins 53.3% of them and the agent
 alone 54.2% (the search changes 2.9% of the moves). Expert iteration, which needs the search to find
-better moves than the agent, is therefore not a way forward on `v2` as it was on `v1`.
+better moves than the agent, is therefore not a way forward on `v2` as it was on `v1` with this
+short search; a Monte Carlo tree search does find better moves (see
+[Monte Carlo tree search](#monte-carlo-tree-search) below).
 
 #### Late starts
 
@@ -471,6 +473,83 @@ of the 3000 evaluation games, 3.8 points more than run 1 and 3.0 more than run 2
 longer without late starts:
 
 ![A2C/PPO training on v2 with late starts](./Media/a2c_ppo_training_v2_late_starts.png)
+
+#### New rewards (runs 4 and 5)
+
+Watching run 3 play showed Pacman hunting the ghosts whenever he had power. The rewards of `v1`
+asked for it: a cookie eaten with power was worth nothing while a ghost was left (in `v2` there is
+always one), and a power cookie was worth more with a ghost close. Since then, in `v2`, the cookies
+eaten with power keep their reward and a power cookie is worth a fixed 1.3 (see the table of
+[Game v2](#game-v2)).
+
+Run 4 was trained from scratch with these rewards and the late starts (`LATE_START_PROB = 0.25`),
+for 60 million steps on a Colab T4 (about 870 steps per second, 19 hours), the learning rate
+decreasing from 2.5e-4 to 2.5e-5 and the curriculum over the first 20% of the training. It wins its
+first games after 2 million steps (run 1: 8 million), and half of its training games at the end:
+
+![A2C/PPO training on v2 with the new rewards](./Media/a2c_ppo_training_v2_rewards.png)
+
+Run 5 resumed run 4 at 2.5e-5 with the late starts. Its training games were won no more often
+(from 52% to about 54%), but the agent kept improving: on the same 3000 games
+(`--seed 4001`), run 3 wins 54.5%, run 4 56.8% at 50 million steps and 60.0% at 60 million, and
+run 5 60.5%, 63.2% and 64.5% after 5, 10 and 15 million more steps. As with run 2, the rates of
+the training games, played with sampled actions, are not a guide to the agent's best action.
+
+The checkpoint of run 5 at 15 million steps was chosen on these games, so it was evaluated again on
+3000 others (`--seed 7001`): it wins 64.8% of them, run 4 59.9%. It is the agent saved in
+`Trainings/A2C/PPO_v2`, the default of `pacman_play.py --game v2`.
+
+#### Monte Carlo tree search
+
+Is 64% good? A strong player says what the game allows. `pacman_mcts.py` is a Monte Carlo tree
+search (MCTS) used by `pacman_play.py --mcts N` when a ghost is close:
+
+    python pacman_play.py --game v2 -n 100 --mcts 100 -w 4
+
+Unlike Hex, Pacman is the only player: the ghosts do not choose their moves to beat him, they
+follow the random rules of the game. They are chance, as the dice of backgammon, so the value of a
+move is an average over their behaviours, not a minimum. The search is "open-loop": its tree holds
+only Pacman's move sequences, and each simulation replays them on a copy of the game
+(`env.clone()`) where the ghosts move by the game's own code with random numbers of their own. Each
+simulation descends the tree with the PUCT rule of AlphaZero (the agent's policy as prior); at a
+new node the agent plays greedily for 10 moves and its value estimates the rest of the game. The
+most visited move is played. The search saves and restores the random state of the real game, so
+the games played with and without search are the same games.
+
+The value of a node must include the reward of the move that leads to it: a move onto a ghost ends
+the game, and without its -35 the search preferred walking into a ghost in tight spots (it won 3 of
+20 games that the agent alone won 14 times).
+
+To be faster, the simulations run in waves of 16: a "virtual loss" makes the simulations of a wave
+take different branches, and their network evaluations are made in one batch. With a cache of the
+ghosts' shortest paths (`ghost_agents.py`, which changes no game), a search of 100 simulations
+takes about one second on one CPU core, 2.6 times less than one simulation at a time.
+
+On the same 100 games (`--seed 4001`), with 100 simulations per searched move:
+
+| Same 100 games | Won |
+|---|---|
+| run 5 (15M) alone | 68% |
+| run 5 (15M) with MCTS | **82%** |
+
+The search wins 26 games that the agent loses and loses 12 that the agent wins: if the two players
+were equally strong, a split at least this lopsided would have a probability of about 0.017 (sign
+test). The search uses the game's own code for the ghosts (a perfect model), and it is modest; 82%
+is therefore a lower bound of what `v2` allows. The agent, not the game, is the bottleneck.
+
+#### Expert iteration with the MCTS
+
+The search is too slow to play (about 8 minutes per game on one core), but it can teach.
+`pacman_expert.py --teacher mcts` runs expert iteration as in AlphaZero: the agent plays its own
+games, and at each move where a ghost is close the target of its policy is the search's visit
+distribution over the moves (a one-hot target for the look-ahead search of `v1`):
+
+    python pacman_expert.py --game v2 -c Trainings/A2C/PPO_v2/pacman_a2c_final.pth --teacher mcts \
+        --mcts-sims 100 --iterations 5 --games 200 --keep 2 --epochs 3 --workers 4
+
+In the notebooks: `AGENT = "expert"`, `RESUME_FROM` = the `v2` agent, and the `EXPERT_OPTIONS`
+given in the comment of the configuration cell. The course (chapter 11, "Game v2: MCTS against
+chance") explains the search and these results.
 
 ## Some explanations about the software
 
@@ -527,7 +606,10 @@ and A2C (`ActorCriticCNN`), and for the selection of the device (GPU or CPU).
 
 `pacman_search.py` contains the look-ahead search used by `pacman_play.py --search`.
 
-`pacman_expert.py` trains the A2C agent with the look-ahead search as teacher (expert iteration).
+`pacman_mcts.py` contains the Monte Carlo tree search used by `pacman_play.py --mcts`.
+
+`pacman_expert.py` trains the A2C agent with the look-ahead search or the MCTS as teacher (expert
+iteration).
 
 And we already talked about `pacman_play.py` and `pacman_train.py`.
 
@@ -576,6 +658,9 @@ with the Huber loss, and updates the target network with $`\theta' \leftarrow \t
 ## TODO
 <ul>
 <li> Code cleaning </li>
+<li> The MCTS as expert inside PPO (as in RLHF): train with PPO on the game's rewards, with a KL
+penalty that keeps the policy close to the MCTS's visit distributions, instead of pure imitation;
+compare with expert iteration (also for the course) </li>
 </ul>
 
 

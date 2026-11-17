@@ -1,23 +1,31 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Expert iteration: train the A2C agent with the look-ahead search as teacher.
+Expert iteration: train the A2C agent with a search as teacher.
+
+Two teachers (--teacher):
+    lookahead: the short look-ahead search of pacman_search.py (game v1); its target is the
+               move it would play.
+    mcts:      the Monte Carlo tree search of pacman_mcts.py (game v2, whose ghosts the short
+               search cannot beat); its target is the distribution of its visits over the moves
+               (as in AlphaZero), which also tells how good the other moves are.
 
 Each iteration:
     1. Collection: the current agent plays games alone (in parallel processes).
-       At each move where a ghost is close, the look-ahead search (pacman_search.py)
-       gives the move it would play. As the games are played by the agent, the search
+       At each move where a ghost is close, the teacher gives its target. As the games are played by the agent, the search
        labels exactly the situations the agent gets into, including its mistakes
        (DAgger, Ross et al., 2011; expert iteration, Anthony et al., 2017).
-    2. Training: the policy learns to play the search's move where a ghost is close
+    2. Training: the policy learns the teacher's target where a ghost is close
        (with a larger weight where the search disagrees with the agent), and its own
        move elsewhere (so that the rest of its play does not change). The value head
        learns the discounted returns observed in the games.
 The games of each collection are played without search: their results measure the
 progress of the agent alone.
 
-Example:
+Examples:
     python pacman_expert.py --iterations 10 --games 1000 --workers 4
+    python pacman_expert.py -g v2 -c Trainings/A2C/PPO_v2/pacman_a2c_final.pth --teacher mcts \
+        --iterations 5 --games 200 --workers 4
     python pacman_play.py -c Tmp/expert/pacman_expert_final.pth -n 1000
 """
 
@@ -40,6 +48,7 @@ from pacman_training import GAMES
 from pacman_env import PacmanEnvironment
 from pacman_agents import A2C_PacmanAgent
 from pacman_search import LookaheadSearch, snapshot
+from pacman_mcts import MCTS
 
 REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CHECKPOINT = os.path.join(REPO_DIR, "Trainings", "A2C", "PPO_1", "pacman_a2c_final.pth")
@@ -55,11 +64,17 @@ def parse_args():
     parser.add_argument("--iterations", type=int, default=10, help="number of iterations")
     parser.add_argument("--games", type=int, default=1000, help="games played per iteration")
     parser.add_argument("-w", "--workers", type=int, default=4, help="processes playing games in parallel")
-    parser.add_argument("--sims", type=int, default=10, help="search: simulations per candidate move")
-    parser.add_argument("--horizon", type=int, default=10, help="search: moves simulated after each candidate move")
-    parser.add_argument("--radius", type=int, default=5, help="search: used when a ghost is at most this distance")
+    parser.add_argument("--teacher", choices=["lookahead", "mcts"], default="lookahead",
+                        help="the search used as teacher (see above)")
+    parser.add_argument("--mcts-sims", type=int, default=100, help="mcts: simulations per move")
+    parser.add_argument("--mcts-horizon", type=int, default=10,
+                        help="mcts: moves played by the agent after a new node before its value")
+    parser.add_argument("--mcts-radius", type=int, default=6, help="mcts: used when a ghost is at most this distance")
+    parser.add_argument("--sims", type=int, default=10, help="lookahead: simulations per candidate move")
+    parser.add_argument("--horizon", type=int, default=10, help="lookahead: moves simulated after each candidate move")
+    parser.add_argument("--radius", type=int, default=5, help="lookahead: used when a ghost is at most this distance")
     parser.add_argument("--ghost-model", choices=["exact", "chase", "estimated"], default="chase",
-                        help="search: how the ghosts move in the simulations")
+                        help="lookahead: how the ghosts move in the simulations")
     parser.add_argument("--changed-weight", type=float, default=5.,
                         help="weight of the moves where the search disagrees with the agent")
     parser.add_argument("--other-fraction", type=float, default=0.25,
@@ -103,8 +118,11 @@ def _init_worker(args, device):
     _args = args
     env = PacmanEnvironment(GAMES[args.game])
     _agent = _quiet(A2C_PacmanAgent, [env], device=device)
-    _search = LookaheadSearch(_agent, n_simulations=args.sims, horizon=args.horizon, radius=args.radius,
-                              mode="safety", ghost_model=args.ghost_model)
+    if args.teacher == "mcts":
+        _search = MCTS(_agent, n_simulations=args.mcts_sims, horizon=args.mcts_horizon, radius=args.mcts_radius)
+    else:
+        _search = LookaheadSearch(_agent, n_simulations=args.sims, horizon=args.horizon, radius=args.radius,
+                                  mode="safety", ghost_model=args.ghost_model)
 
 
 def _load(checkpoint):
@@ -114,9 +132,34 @@ def _load(checkpoint):
         _loaded = checkpoint
 
 
+def teacher_target(agent, search, env, action):
+    '''
+    The teacher's target at a move where a ghost is close: a probability distribution over the
+    agent's actions (one-hot for the look-ahead search, the visit distribution for the MCTS),
+    and the move the teacher would play.
+    '''
+    n_actions = len(agent.actions)
+    target = np.zeros(n_actions, dtype=np.float32)
+    if isinstance(search, MCTS):
+        if len(search._moves(env)) == 1:
+            target[action] = 1.
+            return target, action
+        stats = search.search(env, agent.frame_stacks[0])
+        for m, (visits, _, _) in stats.items():
+            target[m] = visits
+        target /= target.sum()
+        best = max(stats, key=lambda m: (stats[m][0], stats[m][1]))
+        if search._target(env, best) == search._target(env, action):
+            best = action   # same cell as the agent's move: not a disagreement
+        return target, best
+    move = search.select_action(env, agent.frame_stacks[0], action)
+    target[move] = 1.
+    return target, move
+
+
 def play_labelled_game(agent, search, seed, args, label=True):
     '''
-    The agent plays one game alone. If 'label', the search gives its move at each
+    The agent plays one game alone. If 'label', the teacher gives its target at each
     move where a ghost is close. Returns the game's records and result.
     '''
     env = agent.pacman_envs[0]
@@ -126,17 +169,23 @@ def play_labelled_game(agent, search, seed, args, label=True):
     agent.weights = np.ones_like(agent.weights) # start position depends only on the seed
     agent.reset_episode()
     search.new_game()
-    states, labels, changed, searched, rewards = [], [], [], [], []
+    states, targets, labels, changed, searched, rewards = [], [], [], [], [], []
+    n_actions = len(agent.actions)
+    near = search.ghost_near if isinstance(search, MCTS) else search.ghost_nearby
     state = agent.current_state[0]
     while not env.end and env.n_steps < args.max_moves:
         action, _ = agent.select_action(state, stockastic=(env.ghosts == []))
-        target, is_searched = action, False
-        if label and env.ghosts and search.ghost_nearby(env):
-            target = search.select_action(env, agent.frame_stacks[0], action)
+        policy, move, is_searched = None, action, False
+        if label and env.ghosts and near(env):
+            policy, move = teacher_target(agent, search, env, action)
             is_searched = True
+        if policy is None:
+            policy = np.zeros(n_actions, dtype=np.float32)
+            policy[action] = 1.
         states.append(np.rint(state[0].numpy() * power_scale(args)).astype(np.uint8))
-        labels.append(target)
-        changed.append(target != action)
+        targets.append(policy)
+        labels.append(move)
+        changed.append(move != action)
         searched.append(is_searched)
         before = snapshot(env)
         rewards.append(env.step(agent.actions[action])) # the agent's own move is played
@@ -157,6 +206,7 @@ def play_labelled_game(agent, search, seed, args, label=True):
     idx = [t for t, k in enumerate(keep) if k]
     data = {"states": np.array([states[t] for t in idx], dtype=np.uint8).reshape(len(idx), *agent.input_shape),
             "labels": np.array([labels[t] for t in idx], dtype=np.int64),
+            "targets": np.array([targets[t] for t in idx], dtype=np.float32).reshape(len(idx), n_actions),
             "changed": np.array([changed[t] for t in idx], dtype=bool),
             "returns": returns[idx]}
     result = {"won": env.end and not env.dead, "lost": env.dead, "aborted": not env.end,
@@ -192,6 +242,7 @@ def collect(pool, checkpoint, seeds, label, progress=""):
 def train(net, optimizer, datasets, args, device):
     states = np.concatenate([d["states"] for d in datasets])
     labels = np.concatenate([d["labels"] for d in datasets])
+    targets = np.concatenate([d["targets"] for d in datasets])
     changed = np.concatenate([d["changed"] for d in datasets])
     returns = np.concatenate([d["returns"] for d in datasets])
     weights = np.where(changed, args.changed_weight, 1.).astype(np.float32)
@@ -204,11 +255,12 @@ def train(net, optimizer, datasets, args, device):
         for k in range(0, n, args.batch):
             idx = perm[k:k + args.batch]
             x = torch.from_numpy(states[idx].astype(np.float32) / power_scale(args)).to(device)
-            y = torch.from_numpy(labels[idx]).to(device)
+            y = torch.from_numpy(targets[idx]).to(device)
             w = torch.from_numpy(weights[idx]).to(device)
             ret = torch.from_numpy(returns[idx]).to(device)
             logits, values = net(x)
-            policy_loss = (F.cross_entropy(logits, y, reduction="none") * w).sum() / w.sum()
+            # Cross-entropy with the teacher's distribution (one-hot: the usual cross-entropy)
+            policy_loss = (-(y * F.log_softmax(logits, dim=1)).sum(dim=1) * w).sum() / w.sum()
             value_loss = 0.5 * (values - ret).pow(2).mean()
             loss = policy_loss + args.value_coef * value_loss
             optimizer.zero_grad(set_to_none=True)
@@ -256,9 +308,11 @@ def main():
     agent.load(args.checkpoint)
     net = agent.A2C.a2c_net
     optimizer = torch.optim.Adam(net.parameters(), lr=args.lr, eps=1e-5)
+    teacher = (f"MCTS, {args.mcts_sims} simulations, horizon {args.mcts_horizon}, radius {args.mcts_radius}"
+               if args.teacher == "mcts" else
+               f"look-ahead search, {args.sims} simulations, horizon {args.horizon}, {args.ghost_model} ghosts")
     print(f"Expert iteration from {args.checkpoint} on {device}: {args.iterations} iterations of "
-          f"{args.games} games, {args.workers} workers; search: {args.sims} simulations, horizon "
-          f"{args.horizon}, {args.ghost_model} ghosts", flush=True)
+          f"{args.games} games, {args.workers} workers; teacher: {teacher}", flush=True)
 
     checkpoint = str(out / "pacman_expert_0.pth")
     agent.save(checkpoint)
