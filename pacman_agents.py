@@ -22,6 +22,19 @@ import pathlib
 from collections import deque
 
 
+
+def ghost_stats(games, env) -> str:
+    '''
+    The ghost part of the training log line. Game v1: the ghosts left at the end (eaten ghosts
+    are gone for good). Game v2 (the eaten ghosts come back, so 3 are always left): the ghosts
+    eaten per game, and the cookies left when a game is lost (where in the game Pacman is caught).
+    '''
+    if not env.ghosts_come_back:
+        return f"ghosts left {np.mean([g['ghosts_left'] for g in games]):.2f}"
+    lost = [g["cookies_left"] for g in games if g["lost"]]
+    return (f"ghosts eaten {np.mean([g['ghosts_eaten'] for g in games]):.2f}, "
+            f"cookies left when lost {np.mean(lost) if lost else 0:5.1f}")
+
 class PacmanAgent(ABC):
     '''
     Base class of the agents.
@@ -268,6 +281,8 @@ class DQN_PacmanAgent(PacmanAgent):
                                     "length": ep_lengths[env_idx],
                                     "won": bool(done and not env.dead), "lost": bool(env.dead),
                                     "aborted": bool(truncated), "ghosts_left": env.n_ghosts_in_game,
+                                    "ghosts_eaten": env.n_ghosts_eaten,
+                                    "cookies_left": len(env.cookies) + len(env.power_cookies),
                                     "power_cookies_eaten": env.n_eaten_power_cookies})
                     self.reset_env(env_idx)
                     obs = self.stacked_observation(env_idx, reset=True)
@@ -304,7 +319,7 @@ class DQN_PacmanAgent(PacmanAgent):
                 print(f"{timedelta(seconds=int(now - start))} | step {step:>9} | games {len(history):>7} | "
                       f"eps {self.epsilon:.3f} | reward {avg('reward'):7.2f} | "
                       f"won {100*avg('won'):5.1f}% lost {100*avg('lost'):5.1f}% aborted {100*avg('aborted'):4.1f}% | "
-                      f"ghosts left {avg('ghosts_left'):.2f} | len {avg('length'):5.1f} | "
+                      f"{ghost_stats(recent, self.pacman_envs[0])} | len {avg('length'):5.1f} | "
                       f"{loss_str}lr {lr:.2e} | {sps:.0f} steps/s", flush=True)
                 loss_sum, q_sum, n_updates = 0., 0., 0
 
@@ -533,6 +548,8 @@ class A2C_PacmanAgent(PacmanAgent):
                                         "length": ep_lengths[env_idx],
                                         "won": bool(done and not env.dead), "lost": bool(env.dead),
                                         "aborted": bool(truncated), "ghosts_left": env.n_ghosts_in_game,
+                                        "ghosts_eaten": env.n_ghosts_eaten,
+                                        "cookies_left": len(env.cookies) + len(env.power_cookies),
                                         "power_cookies_eaten": env.n_eaten_power_cookies,
                                         "aggressiveness_scale": scale, "late_start": late_game[env_idx]})
                         obs = new_game(env_idx, scale)
@@ -572,7 +589,7 @@ class A2C_PacmanAgent(PacmanAgent):
                 print(f"{timedelta(seconds=int(now - start))} | step {step:>9} | games {len(history):>7} | "
                       f"{curriculum_str}reward {avg('reward'):7.2f} | "
                       f"won {100*avg('won'):5.1f}% lost {100*avg('lost'):5.1f}% aborted {100*avg('aborted'):4.1f}% | "
-                      f"ghosts left {avg('ghosts_left'):.2f} | len {avg('length'):5.1f} | "
+                      f"{ghost_stats(recent, self.pacman_envs[0])} | len {avg('length'):5.1f} | "
                       f"entropy {u['entropy']:.3f}, v_loss {u['value_loss']:.3f}, kl {u['approx_kl']:.4f}, "
                       f"clip {u['clip_frac']:.2f} | lr {lr:.2e} | {sps:.0f} steps/s", flush=True)
 

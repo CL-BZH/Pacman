@@ -97,8 +97,15 @@ class PacmanEnvironment:
         self._display_rng = random.Random()
 
         
+    @property
+    def ghosts_come_back(self) -> bool:
+        '''True if the eaten ghosts come back (game v2): the number of ghosts left at the end
+        is then meaningless, the number of ghosts eaten is what tells how Pacman uses his power.'''
+        return self.ghost_respawn == "house" or self.ghost_respawn_delay > 0
+
     def reset(self, pacman_start_pos: Optional[Pos]=None, ghosts_start_pos: Optional[List[Pos]]=None):
         self.n_steps = 0
+        self.n_ghosts_eaten = 0   # ghosts eaten during the game (see ghosts_come_back)
         self.cumulated_reward = 0.
         self.end = False
         self.dead = False
@@ -244,6 +251,7 @@ class PacmanEnvironment:
             if self.power_credit != 0:
                 # Pacman eats the ghost
                 self.ghosts.remove(ghost)
+                self.n_ghosts_eaten += 1
                 ghost.eaten_at = self.n_steps
                 ghost.eaten_pos = tuple(int(c) for c in ghost.pos)
                 if self.ghost_respawn == "house":
