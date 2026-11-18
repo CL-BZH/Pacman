@@ -506,7 +506,7 @@ search (MCTS) used by `pacman_play.py --mcts N` when a ghost is close:
 
     python pacman_play.py --game v2 -n 100 --mcts 100 -w 4
 
-Unlike Hex, Pacman is the only player: the ghosts do not choose their moves to beat him, they
+Unlike Hex (see the MCTS of [Hex_game_AI](https://github.com/CL-BZH/Hex_game_AI)), Pacman is the only player: the ghosts do not choose their moves to beat him, they
 follow the random rules of the game. They are chance, as the dice of backgammon, so the value of a
 move is an average over their behaviours, not a minimum. The search is "open-loop": its tree holds
 only Pacman's move sequences, and each simulation replays them on a copy of the game
