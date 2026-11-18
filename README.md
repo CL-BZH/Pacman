@@ -496,8 +496,8 @@ run 5 60.5%, 63.2% and 64.5% after 5, 10 and 15 million more steps. As with run 
 the training games, played with sampled actions, are not a guide to the agent's best action.
 
 The checkpoint of run 5 at 15 million steps was chosen on these games, so it was evaluated again on
-3000 others (`--seed 7001`): it wins 64.8% of them, run 4 59.9%. It is the agent saved in
-`Trainings/A2C/PPO_v2`, the default of `pacman_play.py --game v2`.
+3000 others (`--seed 7001`): it wins 64.8% of them, run 4 59.9%. It was the `v2` agent until the
+expert iteration below.
 
 #### Monte Carlo tree search
 
@@ -548,8 +548,71 @@ distribution over the moves (a one-hot target for the look-ahead search of `v1`)
         --mcts-sims 100 --iterations 5 --games 200 --keep 2 --epochs 3 --workers 4
 
 In the notebooks: `AGENT = "expert"`, `RESUME_FROM` = the `v2` agent, and the `EXPERT_OPTIONS`
-given in the comment of the configuration cell. The course (chapter 11, "Game v2: MCTS against
-chance") explains the search and these results.
+given in the comment of the configuration cell.
+
+Four iterations of 200 games from run 5 (15M), with 100 simulations per search, took 7.5 hours on a
+Colab T4 with 8 CPU cores (`High-RAM`; almost all the time is spent in the search). The search
+overrode the agent 9.6 times per game at the first iteration, then 4.9, 4.7 and 4.3: the network
+learnt about half of the search's corrections at once, then little more. The games won by the
+agent alone, measured on the 200 games of each iteration, look like a steady rise:
+
+![Expert iteration on v2](./Media/expert_iteration_v2.png)
+
+but each point has a standard error of about 3.4 points. On the same 3000 new games
+(`--seed 10001`, compared game by game):
+
+| Same 3000 games | Won |
+|---|---|
+| run 5 (15M), the start of the expert iteration | 65.9% |
+| after 4 iterations of expert iteration (`PPO_v2`) | 67.3% |
+
+The expert agent wins 664 games that the start agent loses, and loses 624 that it wins: if the two
+were equally strong, a split at least as uneven would happen about 28% of the time (sign test). The
+gain, if any, is small. The expert agent is the one saved in `Trainings/A2C/PPO_v2` (the default of
+`pacman_play.py --game v2`), since it is at least as good.
+
+On `v1`, expert iteration recovered about 60% of the search's gain (97.1% to 97.7%, the search
+reaching 98.1%); on `v2` it recovers about a tenth of it (65.9% to 67.3%, the search reaching about
+82%). The network reproduces only about 65% of the search's corrections on its own training data
+(76% on `v1`): what the search adds on `v2` is computation, not only knowledge. Before a dangerous
+move it simulates the ghosts' random behaviour dozens of times and finds an escape for this
+particular configuration; a network has to turn that into a reflex, from targets that are
+themselves noisy (with 100 simulations, the search does not always choose the same move in the
+same position). A stronger and more consistent teacher, more data, or a larger network could
+transfer more; so could keeping the PPO training with a penalty for straying from the search's
+choices (see the TODO list).
+
+#### What game v2 taught
+
+The work on `v2` went through several wrong turns; the methods that got it out of them are worth
+more than the numbers. The course (chapter 16, "Game v2: an RL project from start to finish")
+tells the story in detail.
+
+1. **Evaluate on many games, and on games that were not used to decide.** With 1000 games the
+   standard error of a win rate is 1.6 points (2.2 for a difference); with 3000, 0.9 (1.3). Run 1
+   was chosen over run 2 on 1000 games where it won 56.3%; on 3000 new games it won 50.1%. Each
+   comparison now uses fresh games, and the best of several agents is confirmed on others.
+2. **Compare agents on the same games, game by game.** Only the games where they disagree carry
+   information (sign test): this is how the MCTS's 82% against 68% on 100 games is significant,
+   and how expert iteration's +1.3 points on 3000 games is not.
+3. **The training curve is not the agent.** It shows the games played with sampled actions. Run 2
+   rose in training and not in evaluation; run 5 stayed flat in training while its best action kept
+   improving (60.0% to 64.5%).
+4. **Look at how the agent loses before changing anything.** Counting the losses by stage of the
+   game, then by distance to the ghosts, then drawing where the last cookies are, turned "the agent
+   is weak" into "the agent leaves the top corners for the end and is caught at their entrances",
+   which suggested the late starts.
+5. **Watch the agent play, and read the rewards it is given.** Pacman hunting ghosts with his power
+   was not a mistake of the agent but what the rewards of `v1` asked for in a game where the ghosts
+   come back. Fixing them was worth more than any amount of training (run 4).
+6. **Prefer changes that do not encode the answer.** The late starts (exploring starts: practise
+   the states where the agent's own games are lost) were preferred to a reward for the cookies of
+   the top corners, which would have worked on this maze only.
+7. **Measure the ceiling before investing.** A slow but strong player (the MCTS) showed that the
+   agent, not the game, was the bottleneck, and gave a target (82%).
+8. **Check a search against the agent alone before trusting it.** The first MCTS lost to the agent
+   (3 of 20 games against 14): the value of a move did not include its own reward, so walking into a
+   ghost looked best.
 
 ## Some explanations about the software
 
