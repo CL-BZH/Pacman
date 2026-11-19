@@ -320,11 +320,87 @@ corrections on its own training data ($76\%$ on \code{v1}).
   the search's corrections were simpler patterns, easier to learn.
 \end{intuition}
 
+A test separates the two explanations, noisy targets or a network too
+small. On $300$ dangerous positions of the agent's own games, the search
+was run twice, with different random numbers, with $100$ and with $400$
+simulations. Two searches chose the same move on $97\%$ and $93\%$ of the
+positions, but mostly because both followed the network: the search chose
+the network's move on $92\%$ to $96\%$ of them. On the few positions where
+it overrode the network, a second search made the same override only about
+half the time ($6$ of $12$ with $100$ simulations, $9$ of $24$ with $400$).
+The corrections that matter are close calls, decided by the random
+simulations; a network cannot learn a coin flip, however large it is.
+
 Several ways forward remain: a stronger and more consistent teacher (more
 simulations), more data per iteration, a larger network; or keeping the PPO
 training on the game's rewards with a penalty for straying from the search's
 choices, as the KL penalty of RLHF keeps a policy close to a reference
 (\cref{eq:rlhf-objective}), instead of pure imitation.
+
+\section{Training longer}
+
+The consistency test pointed to the simplest remaining lever: train longer
+with the same network. \emph{Run 6} repeats run 4 (new rewards, late
+starts, from scratch) over $100$ million steps instead of $60$, the learning
+rate and the curriculum stretched over the longer training. It took $20$
+hours on a Colab T4: a cache of the ghosts' shortest paths, written for the
+search, made the game itself faster ($1400$ steps per second instead of
+$870$). Its training curve rose steadily to the end; its checkpoints, on
+the same $3000$ new games, tell a different story at the end.
+
+\begin{pacman}{Training curve and agent}{run6}
+  \begin{center}
+    \begin{tabular}{@{}lccc@{}}
+      \toprule
+      Steps & Evaluation & Training & Gap \\
+      \midrule
+      $60$M & $52.6\%$ & $35.2\%$ & $17.4$ \\
+      $80$M & $60.7\%$ & $43.8\%$ & $16.9$ \\
+      $90$M & $63.4\%$ & $49.9\%$ & $13.5$ \\
+      $100$M & $64.1\%$ & $55.0\%$ & $9.1$ \\
+      \bottomrule
+    \end{tabular}
+  \end{center}
+  Evaluation: best action, $3000$ new games. Training: games started from
+  the beginning, around the checkpoint. From $60$ to $90$ million steps the
+  agent improved by $11$ points; over the last $10$ million, the evaluation
+  gained less than $1$ point and the training rate $5$. On the same games
+  the expert agent wins $66.4\%$ of them: run 6 is not better
+  ($p \approx 0.06$, \cref{prop:sign-test}).
+\end{pacman}
+
+\paragraph{Two kinds of randomness.} The ghosts are random in the training
+games and in the evaluation alike. Pacman is random only in the training:
+to explore, PPO samples its action from the policy, while the evaluation
+plays the most probable action. If at each of $k$ dangerous moments of a
+game the sampled action is a fatal one with probability $\varepsilon$, the
+game survives these moments with probability $(1 - \varepsilon)^k$; with
+$k = 20$ and $\varepsilon = 0.02$, that is $0.67$. As the policy becomes
+more confident (its entropy fell from $0.50$ to $0.40$ nats), $\varepsilon$
+decreases, and the training rate rises towards the evaluation even if the
+best action does not change at all. The gap of the table shrinks for that
+reason.
+
+\begin{remark}{Lesson: a falling entropy lifts the training curve}%
+  {lesson-entropy}
+  The win rate of the training games mixes two things: how good the best
+  action is, and how often the agent does not play it. A falling entropy
+  alone makes the curve rise. Only the evaluation of the best action
+  separates the two.
+\end{remark}
+
+Three different routes now end at the same level: fine-tuning ($75$ million
+steps in all, $65.9\%$), expert iteration on top of it ($66$ to $67\%$), and a
+longer schedule ($64.1\%$). When more training, more data and a teacher's
+knowledge all stop at the same place, the limit is likely the agent itself:
+a reflex that maps the last two images to a move, where surviving three
+randomly moving ghosts sometimes needs looking a few moves ahead. The same
+network wins $82\%$ of the games when it can look ahead
+(\cref{pac:mcts-ceiling}).
+Two directions follow: planning at play time, fairly, with a search that
+estimates the ghosts' behaviour from their moves; or giving the network
+more to work with, a memory (a recurrent network, more images) or a larger
+field of view.
 
 \section{The methods}
 
@@ -340,6 +416,7 @@ part in its choice (the agent with the search on $100$ games):
     run 4: new rewards and late starts, from scratch, $60$M & $60\%$ \\
     run 5: $+15$M at the final learning rate & $65\%$ \\
     expert iteration with the MCTS, $4$ iterations & $67\%$ \\
+    run 6: as run 4, $100$M steps & $64\%$ \\
     \midrule
     agent with the MCTS (slow, knows the ghosts' rules) & $82\%$ \\
     \bottomrule
@@ -357,7 +434,8 @@ points. The methods, in the order they were needed:
   \item \textbf{Measure honestly}: the best of several agents confirmed on
     games that played no part in its choice (\cref{pac:lucky-games}).
   \item \textbf{Measure the agent, not the training}: the curve of the
-    sampled policy can rise or stay flat whatever the agent does.
+    sampled policy can rise or stay flat whatever the agent does; a falling
+    entropy alone lifts it.
   \item \textbf{Diagnose before curing}: when, where and how the games are
     lost (\cref{sec:v2-losses}).
   \item \textbf{Prefer neutral cures}: practise where the agent fails
@@ -369,5 +447,8 @@ points. The methods, in the order they were needed:
   \item \textbf{Test the tools}: a search that loses to its own network is
     a bug.
   \item \textbf{Know what can be learnt}: a search's skill can be distilled
-    into a network only as far as it is knowledge rather than computation.
+    into a network only as far as it is knowledge rather than computation,
+    and its targets only as far as they are consistent.
+  \item \textbf{Recognise a plateau}: when several independent routes stop
+    at the same level, look at the agent's design, not at more training.
 \end{enumerate}

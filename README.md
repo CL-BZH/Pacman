@@ -586,6 +586,51 @@ same position). A stronger and more consistent teacher, more data, or a larger n
 transfer more; so could keeping the PPO training with a penalty for straying from the search's
 choices (see the TODO list).
 
+A test separates noisy targets from a network too small. On 300 dangerous positions, the search was
+run twice (different random numbers) with 100 and with 400 simulations. Two searches chose the same
+move on 97% and 93% of the positions, but mostly because both followed the network (the network's
+move on 92% to 96% of them). Where the search overrode the network, a second search made the same
+override only about half the time (6 of 12 with 100 simulations, 9 of 24 with 400): the corrections
+that matter are close calls decided by the random simulations, and a network cannot learn a coin
+flip, however large it is.
+
+#### Training longer (run 6)
+
+Run 6 repeats run 4 (new rewards, late starts, from scratch) over 100 million steps instead of 60,
+the learning rate and the curriculum stretched accordingly. It took 20 hours on a Colab T4 (1400
+steps per second instead of 870, thanks to the cache of the ghosts' shortest paths). Its training
+curve rose steadily to the end:
+
+![A2C/PPO training on v2 over 100 million steps](./Media/a2c_ppo_training_v2_100M.png)
+
+but its checkpoints, on the same 3000 new games (`--seed 13001`), level off:
+
+| Steps | Evaluation (best action) | Training (sampled actions) | Gap |
+|---|---|---|---|
+| 60M | 52.6% | 35.2% | 17.4 |
+| 80M | 60.7% | 43.8% | 16.9 |
+| 90M | 63.4% | 49.9% | 13.5 |
+| 100M | 64.1% | 55.0% | 9.1 |
+
+(Training: games started from the beginning, around the checkpoint; the plot also includes the late
+starts, which are won more often.) The expert agent wins 66.4% of these games: run 6 is not better
+(p = 0.06), and the expert agent stays in `Trainings/A2C/PPO_v2`.
+
+The ghosts are random in the training games and in the evaluation; Pacman is random only in the
+training, where PPO samples its action to explore. A fatal non-best action with probability 2% at
+each of 20 dangerous moments of a game loses a third of the games. As the policy becomes more
+confident (its entropy fell from 0.50 to 0.40), these mistakes become rarer and the training rate
+rises towards the evaluation, even when the best action no longer improves: over the last 10
+million steps, the evaluation gained less than 1 point and the training rate 5.
+
+Three routes now end at the same level: fine-tuning (run 5, 65.9%), expert iteration (66-67%) and a
+longer schedule (run 6, 64.1%). When more training, more data and a teacher's knowledge all stop at
+the same place, the limit is likely the agent itself: a reflex that maps the last two images to a
+move, where escaping three randomly moving ghosts sometimes needs looking a few moves ahead (the same
+network wins 82% when it can). The next directions are planning at play time, fairly (a search that
+estimates the ghosts' behaviour from their moves), or a network with more to work with (memory, more
+images, a larger field of view).
+
 #### What game v2 taught
 
 The work on `v2` went through several wrong turns; the methods that got it out of them are worth
@@ -601,7 +646,7 @@ tells the story in detail.
    and how expert iteration's +1.3 points on 3000 games is not.
 3. **The training curve is not the agent.** It shows the games played with sampled actions. Run 2
    rose in training and not in evaluation; run 5 stayed flat in training while its best action kept
-   improving (60.0% to 64.5%).
+   improving (60.0% to 64.5%); at the end of run 6, a falling entropy alone kept lifting the curve.
 4. **Look at how the agent loses before changing anything.** Counting the losses by stage of the
    game, then by distance to the ghosts, then drawing where the last cookies are, turned "the agent
    is weak" into "the agent leaves the top corners for the end and is caught at their entrances",
@@ -618,6 +663,8 @@ tells the story in detail.
 8. **Check a search against the agent alone before trusting it.** The first MCTS lost to the agent
    (3 of 20 games against 14): the value of a move did not include its own reward, so walking into a
    ghost looked best.
+9. **Recognise a plateau.** When several independent routes (more training, a teacher, a longer
+   schedule) stop at the same level, look at the agent's design rather than at more training.
 
 ## Some explanations about the software
 
