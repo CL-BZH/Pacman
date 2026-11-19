@@ -534,8 +534,12 @@ On the same 100 games (`--seed 4001`), with 100 simulations per searched move:
 
 The search wins 26 games that the agent loses and loses 12 that the agent wins: if the two players
 were equally strong, a split at least this lopsided would have a probability of about 0.017 (sign
-test). The search uses the game's own code for the ghosts (a perfect model), and it is modest; 82%
-is therefore a lower bound of what `v2` allows. The agent, not the game, is the bottleneck.
+test). The search moves the ghosts with the game's own code: it knows their rules exactly (each
+ghost's aggressiveness, the shortest-path chase), though not the random draws of the real game. A
+fair player would have to estimate these rules by watching the ghosts, as the `estimated` model of
+the look-ahead search does (on `v1`, that model did as well as the exact one; on `v2` it has not
+been measured). 82% is therefore what a modest search achieves knowing the ghosts' rules: the agent,
+not the game, is the bottleneck, at least for a player that knows the ghosts.
 
 #### Expert iteration with the MCTS
 
@@ -609,7 +613,8 @@ tells the story in detail.
    the states where the agent's own games are lost) were preferred to a reward for the cookies of
    the top corners, which would have worked on this maze only.
 7. **Measure the ceiling before investing.** A slow but strong player (the MCTS) showed that the
-   agent, not the game, was the bottleneck, and gave a target (82%).
+   agent, not the game, was the bottleneck, and gave a target (82%). Say what the reference player
+   knows: this one knew the ghosts' rules, which a fair player must estimate.
 8. **Check a search against the agent alone before trusting it.** The first MCTS lost to the agent
    (3 of 20 games against 14): the value of a move did not include its own reward, so walking into a
    ghost looked best.

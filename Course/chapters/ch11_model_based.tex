@@ -534,10 +534,12 @@ rollouts: after a new node the agent plays greedily for $H = 10$ moves, then
 its value estimates the rest of the game. The simulations copy the real game
 (\code{env.clone()}) and move the ghosts with the game's own code, with
 random numbers of their own: the search uses the \code{exact} ghost model
-of \cref{sec:ghost-models}, a perfect model, as an estimate of what the
-game allows requires. The search is used only when a
-ghost is within $6$ cells (in $\abs{\Delta i} + \abs{\Delta j}$); elsewhere
-the agent plays alone.
+of \cref{sec:ghost-models}. It knows the ghosts' rules exactly (their
+aggressiveness, the shortest-path chase), though not the random draws of
+the real game; a fair player would have to estimate those rules from the
+ghosts' moves, as the \code{estimated} model does. The search is used only
+when a ghost is within $6$ cells (in $\abs{\Delta i} + \abs{\Delta j}$);
+elsewhere the agent plays alone.
 
 \begin{algobox}{One wave of \code{pacman\_mcts.py} ($B$ simulations)}
   \begin{algorithmic}[1]
@@ -609,8 +611,9 @@ carry information.
   The MCTS player wins $26$ games that the agent loses and loses $12$ that
   the agent wins: $p \approx 0.017$ (\cref{prop:sign-test}). All the
   remaining losses are traps in the middle of the game. With a modest
-  search, $82\%$ is a lower bound of what the game allows: the agent, not
-  the game, is the bottleneck.
+  search, $82\%$ is a lower bound of what a player \emph{knowing the
+  ghosts' rules} can achieve; a fair player, who must estimate them, may
+  do somewhat less. The agent, not the game, is the bottleneck.
 \end{pacman}
 
 \paragraph{The search as teacher.} The search is far too slow to play
@@ -641,7 +644,7 @@ small part of what the search adds (\cref{ch:v2-project}).
     rate from $96\%$ to about $98\%$, without knowing the ghosts' code;
     expert iteration transfers part of this gain to the network alone.
   \item On game \code{v2}, where the ghosts are chance rather than an
-    opponent, an open-loop MCTS guided by the agent wins $82\%$ of the games
-    that the agent alone wins $68\%$ of: the agent is the bottleneck, and
-    the search becomes its teacher.
+    opponent, an open-loop MCTS guided by the agent and knowing the ghosts'
+    rules wins $82\%$ of the games that the agent alone wins $68\%$ of: the
+    agent is the bottleneck, and the search becomes its teacher.
 \end{itemize}

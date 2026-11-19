@@ -248,13 +248,20 @@ strong player answers: the open-loop MCTS of \cref{sec:mcts-v2}, with the
 ghosts as chance, $100$ simulations per move near a ghost, and the agent as
 prior and evaluator. On the same $100$ games it wins $82\%$ of them, against
 $68\%$ for the agent alone, a significant difference
-(\cref{pac:mcts-ceiling}).
+(\cref{pac:mcts-ceiling}). This player knows the ghosts' rules: its
+simulations move them with the game's own code, though with random draws of
+their own, not those of the real game. A fair player would have to estimate
+the rules by watching the ghosts; on \code{v1}, the look-ahead search did as
+well with such an estimate as with the exact rules (\cref{sec:ghost-models}),
+but on \code{v2} this has not been measured.
 
 \begin{remark}{Lesson: measure the ceiling before investing}{lesson-ceiling}
   A strong but slow player tells whether the agent or the problem is the
   limit, and gives a target. Without it, more training could have been
   spent on a game whose ceiling was already reached; with it, the agent
-  was known to be at least $15$ points short.
+  was known to be at least $15$ points short. State what the reference
+  player knows: this one knew the ghosts' rules, which a fair player must
+  estimate.
 \end{remark}
 
 \begin{remark}{Lesson: check a search against the agent alone}{lesson-check}
@@ -334,7 +341,7 @@ part in its choice (the agent with the search on $100$ games):
     run 5: $+15$M at the final learning rate & $65\%$ \\
     expert iteration with the MCTS, $4$ iterations & $67\%$ \\
     \midrule
-    agent with the MCTS (slow) & $82\%$ \\
+    agent with the MCTS (slow, knows the ghosts' rules) & $82\%$ \\
     \bottomrule
   \end{tabular}
 \end{center}
