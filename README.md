@@ -729,6 +729,9 @@ with the Huber loss, and updates the target network with $`\theta' \leftarrow \t
 <li> The MCTS as expert inside PPO (as in RLHF): train with PPO on the game's rewards, with a KL
 penalty that keeps the policy close to the MCTS's visit distributions, instead of pure imitation;
 compare with expert iteration (also for the course) </li>
+<li> A KL-adaptive learning rate for PPO (raise it when the KL between successive policies is well
+below a target such as 0.01, lower it when well above) instead of the fixed linear decay; compare
+with the 100M-step run (see the course, chapter 9, "Choosing the learning rate") </li>
 </ul>
 
 

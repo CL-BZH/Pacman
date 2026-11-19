@@ -319,6 +319,76 @@ column. Typical values for the repository's agent are a KL of a few
 thousandths and a clip fraction of a few percent: the policy changes
 gently at each iteration.
 
+\section{Choosing the learning rate}
+\label{sec:ppo-lr}
+
+The repository's schedule is the usual one for PPO: the learning rate
+decreases linearly over the whole training, from $\eta_{\max} = 2.5 \times
+10^{-4}$ to $\eta_{\min} = 2.5 \times 10^{-5}$. Large steps early, while the
+policy is far from good; small steps late, so that the updates stop
+undoing each other and the policy settles. The schedule is fixed in
+advance, whatever happens during the training.
+
+\paragraph{A learning-rate problem, or a harder task?} With a curriculum
+(\cref{sec:v2}, the ghosts' aggressiveness growing over the first fifth of
+the training) the games won can stall or fall while the agent keeps
+learning, because the task gets harder. A learning rate that is too large
+shows in the two monitors of the previous section: the KL jumps and the
+clip fraction grows (many samples leave the trust region), and the losses
+oscillate. A stalling win rate with a calm KL and a small clip fraction
+is a moving target, not a learning rate problem. On game \code{v2}, during
+the curriculum, the KL stayed at about $0.005$ and the clip fraction at
+$0.05$ to $0.07$ (\cref{ch:v2-project}).
+
+\begin{definition}{Warm restarts}{warm-restarts}
+  A schedule with \emph{warm restarts} (SGDR, Loshchilov and Hutter, 2017)
+  decreases the learning rate over a period of $T_i$ steps, then raises it
+  back to $\eta_{\max}$ and starts again, typically with a cosine within
+  each period:
+  \begin{equation}
+    \eta_t = \eta_{\min} + \tfrac{1}{2}(\eta_{\max} - \eta_{\min})
+      \bigl(1 + \cos(\pi\, t_i / T_i)\bigr),
+  \end{equation}
+  where $t_i$ counts the steps since the last restart.
+\end{definition}
+
+A restart helps when the problem changes, for example at the end of a
+curriculum: a larger learning rate lets the agent adapt faster to the new
+task. With a linear decay over the whole training it matters less: at the
+end of the curriculum, after a fifth of the training, the learning rate is
+still $82\%$ of $\eta_{\max}$.
+
+Both schedules are decided in advance. The size of the updates, which is
+what matters, can instead be measured: it is the KL of the previous
+section. Keeping it near a target is the idea of TRPO's constraint on the
+average KL ($\leq \delta \approx 0.01$), and of the automatic tuning of
+the entropy temperature in SAC.
+
+\begin{definition}{KL-adaptive learning rate}{kl-adaptive-lr}
+  After each PPO iteration, with $d$ the average KL between the policies
+  before and after the iteration and $d^\ast$ a target (say $0.01$):
+  \begin{equation}
+    \eta \leftarrow
+    \begin{cases}
+      \eta / 1.5 & \text{if } d > 2\, d^\ast, \\
+      1.5\, \eta & \text{if } d < d^\ast / 2, \\
+      \eta & \text{otherwise},
+    \end{cases}
+  \end{equation}
+  with $\eta$ kept within $[\eta_{\min}, \eta_{\max}]$.
+\end{definition}
+
+\begin{pacman}{Where a fixed schedule hurt}{fixed-schedule}
+  On game \code{v2}, run 5 resumed a trained agent at the final learning
+  rate $2.5 \times 10^{-5}$ for $15$ million steps (\cref{ch:v2-project}).
+  Its KL was about $0.0001$, a hundred times below a usual target: the
+  updates were tiny, and the agent improved slowly (from $60.0\%$ to
+  $64.5\%$ of the games won). A KL-adaptive learning rate would have raised
+  the rate as soon as the updates became that small. It is not implemented
+  in the repository yet; comparing it with the linear schedule is a natural
+  experiment.
+\end{pacman}
+
 \section{Results on Pacman}
 
 \begin{figure}[ht]
