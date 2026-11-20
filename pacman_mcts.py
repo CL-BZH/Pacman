@@ -29,12 +29,23 @@ ghosts' behaviour in the simulations, and the search saves and restores the rand
 the real game: with or without search, the real ghosts make the same random draws (the games
 of an evaluation are the same games).
 
+Ghost models (ghost_model):
+    exact:     the simulated ghosts move by the game's own code: the search knows their rules
+               (each ghost's aggressiveness, the shortest-path chase), though not the random
+               draws of the real game. A perfect model, for an estimate of what the game allows.
+    estimated: the fair version: the simulated ghosts follow the generic model of
+               pacman_search.py (towards Pacman along a shortest path with probability p_chase,
+               away from him with probability p_flee when he has power, at random otherwise),
+               with p_chase and p_flee estimated for each ghost from its moves since the start
+               of the game (GhostEstimator: every game starts from no information).
+
 Used by pacman_play.py (--mcts N) and pacman_expert.py (--teacher mcts).
 '''
 import math
 from collections import deque
 import numpy as np
 import torch
+from pacman_search import GhostEstimator, LookaheadSearch, distance_table
 
 
 class Node:
@@ -49,7 +60,7 @@ class Node:
 
 class MCTS:
     def __init__(self, agent, n_simulations=100, horizon=10, radius=6, c_puct=1.5,
-                 value_scale=35., batch=16, virtual_loss=10.):
+                 value_scale=35., batch=16, virtual_loss=10., ghost_model="exact"):
         '''
         agent: the A2C agent (policy for the priors and the rollouts, value at the leaves).
         n_simulations: simulations per search.
@@ -60,7 +71,13 @@ class MCTS:
         batch: simulations per wave (network evaluations in one batch).
         virtual_loss: return subtracted from a move while a simulation of the wave goes
             through it, so that the other simulations of the wave try other moves.
+        ghost_model: "exact" or "estimated" (see the module description).
         '''
+        if ghost_model not in ("exact", "estimated"):
+            raise ValueError(f"Unknown ghost model '{ghost_model}'")
+        self.ghost_model = ghost_model
+        self.dist = distance_table(agent.pacman_envs[0]) if ghost_model == "estimated" else None
+        self.estimator = GhostEstimator(self.dist) if ghost_model == "estimated" else None
         self.agent = agent
         self.n_simulations, self.horizon, self.radius = n_simulations, horizon, radius
         self.c_puct, self.value_scale = c_puct, value_scale
@@ -73,10 +90,22 @@ class MCTS:
 
     # Interface of pacman_play.play_game (as LookaheadSearch)
     def new_game(self):
-        pass
+        if self.estimator is not None:
+            self.estimator.reset()
 
     def observe(self, env, before):
-        pass
+        if self.estimator is not None:
+            self.estimator.observe(env, before)
+
+    def _clone(self, env):
+        '''A copy of the real game for a simulation, its ghosts following the chosen model.'''
+        sim = env.clone()
+        if self.estimator is not None:
+            # (eaten ghosts and ghosts in the house too: they come back during the simulation)
+            for ghost in sim.ghosts + sim.dead_ghosts + sim.house_ghosts:
+                LookaheadSearch._model_ghost(self, ghost, p_chase=self.estimator.p(ghost.id, "chase"),
+                                             p_flee=self.estimator.p(ghost.id, "flee"))
+        return sim
 
     def _evaluate(self, frame_lists):
         '''Policy (probabilities) and value (in rewards) of a batch of frame stacks.'''
@@ -125,7 +154,7 @@ class MCTS:
             wave = []
             for k in range(done, min(done + self.batch, self.n_simulations)):
                 np.random.seed(seeds[k])
-                sim = env.clone()
+                sim = self._clone(env)
                 fr = deque(frames, maxlen=frames.maxlen)
                 node, path, rewards = root, [root], []
                 while not sim.end and node.children is not None:

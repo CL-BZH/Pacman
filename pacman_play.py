@@ -221,6 +221,9 @@ def parse_args():
                         help="with --mcts, moves played by the agent after a new node before its value")
     parser.add_argument("--mcts-radius", type=int, default=6,
                         help="with --mcts, search only when a ghost is at most this distance from Pacman")
+    parser.add_argument("--mcts-ghosts", choices=["exact", "estimated"], default="exact",
+                        help="with --mcts, how the ghosts move in the simulations: the game's code "
+                             "(exact), or a generic model estimated from their moves during the game")
     parser.add_argument("-w", "--workers", type=int, default=1,
                         help="number of games played in parallel (CPU processes); useful with --search")
     parser.add_argument("--seed", type=int, default=None,
@@ -296,7 +299,8 @@ def make_player(args, checkpoint, quiet=False):
     if args.mcts > 0:
         if args.agent != "a2c":
             raise ValueError("--mcts needs the A2C agent (policy and value)")
-        search = MCTS(agent, n_simulations=args.mcts, horizon=args.mcts_horizon, radius=args.mcts_radius)
+        search = MCTS(agent, n_simulations=args.mcts, horizon=args.mcts_horizon, radius=args.mcts_radius,
+                      ghost_model=args.mcts_ghosts)
     elif args.search > 0:
         search = LookaheadSearch(agent, n_simulations=args.search, horizon=args.horizon, radius=args.radius,
                                  mode=args.search_mode, ghost_model=args.ghost_model)
@@ -364,7 +368,7 @@ def main():
     print(f"Loaded {checkpoint}")
     if isinstance(search, MCTS):
         print(f"Monte Carlo tree search: {args.mcts} simulations per move, horizon {args.mcts_horizon}, "
-              f"radius {args.mcts_radius}")
+              f"radius {args.mcts_radius}, {args.mcts_ghosts} ghosts")
     elif search is not None:
         print(f"Look-ahead search ({args.search_mode}, {args.ghost_model} ghosts): {args.search} "
               f"simulations per move, horizon {args.horizon}, radius {args.radius}")

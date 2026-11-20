@@ -70,6 +70,8 @@ def parse_args():
     parser.add_argument("--mcts-horizon", type=int, default=10,
                         help="mcts: moves played by the agent after a new node before its value")
     parser.add_argument("--mcts-radius", type=int, default=6, help="mcts: used when a ghost is at most this distance")
+    parser.add_argument("--mcts-ghosts", choices=["exact", "estimated"], default="exact",
+                        help="mcts: the ghosts' model in the simulations (see pacman_mcts.py)")
     parser.add_argument("--sims", type=int, default=10, help="lookahead: simulations per candidate move")
     parser.add_argument("--horizon", type=int, default=10, help="lookahead: moves simulated after each candidate move")
     parser.add_argument("--radius", type=int, default=5, help="lookahead: used when a ghost is at most this distance")
@@ -119,7 +121,8 @@ def _init_worker(args, device):
     env = PacmanEnvironment(GAMES[args.game])
     _agent = _quiet(A2C_PacmanAgent, [env], device=device)
     if args.teacher == "mcts":
-        _search = MCTS(_agent, n_simulations=args.mcts_sims, horizon=args.mcts_horizon, radius=args.mcts_radius)
+        _search = MCTS(_agent, n_simulations=args.mcts_sims, horizon=args.mcts_horizon, radius=args.mcts_radius,
+                       ghost_model=args.mcts_ghosts)
     else:
         _search = LookaheadSearch(_agent, n_simulations=args.sims, horizon=args.horizon, radius=args.radius,
                                   mode="safety", ghost_model=args.ghost_model)
@@ -308,7 +311,8 @@ def main():
     agent.load(args.checkpoint)
     net = agent.A2C.a2c_net
     optimizer = torch.optim.Adam(net.parameters(), lr=args.lr, eps=1e-5)
-    teacher = (f"MCTS, {args.mcts_sims} simulations, horizon {args.mcts_horizon}, radius {args.mcts_radius}"
+    teacher = (f"MCTS, {args.mcts_sims} simulations, horizon {args.mcts_horizon}, radius {args.mcts_radius}, "
+               f"{args.mcts_ghosts} ghosts"
                if args.teacher == "mcts" else
                f"look-ahead search, {args.sims} simulations, horizon {args.horizon}, {args.ghost_model} ghosts")
     print(f"Expert iteration from {args.checkpoint} on {device}: {args.iterations} iterations of "
