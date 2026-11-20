@@ -28,11 +28,12 @@ in one batch. Each simulation keeps its own random state, so the waves do not ch
 ghosts' behaviour in the simulations, and the search saves and restores the random state of
 the real game: with or without search, the real ghosts make the same random draws (the games
 of an evaluation are the same games).
-Warning: the waves weaken the search. On 50 paired games (exact ghosts, 100 simulations),
-waves of 16 won 34 games, as many as the agent alone, against 42 one simulation at a time
-(batch=1, the default): a simulation of a wave does not see the results of the others, and
-the virtual loss pushes it away from the best move, which near a ghost is often the only
-good one. The waves are about twice as fast.
+Warning: the waves may weaken the search. On 70 paired games (exact ghosts, 100
+simulations), waves of 16 won 52 games and one simulation at a time (batch=1, the default)
+57, the agent alone 48 (not significant: 16 against 11 disagreements). A simulation of a
+wave does not see the results of the others, and the virtual loss pushes it away from the
+best move, which near a ghost is often the only good one; with waves the search overrode
+the agent half as often. The waves are about twice as fast.
 
 Ghost models (ghost_model):
     exact:     the simulated ghosts move by the game's own code: the search knows their rules
