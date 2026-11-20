@@ -22,12 +22,17 @@ Each simulation:
       included (a move onto a ghost ends the game: its -35 must count).
 The most visited move is played.
 
-Speed: the simulations run in waves of 'batch' simulations. A "virtual loss" makes the
+Speed: the simulations can run in waves of 'batch' simulations. A "virtual loss" makes the
 simulations of a wave take different branches, and their network evaluations are made
 in one batch. Each simulation keeps its own random state, so the waves do not change the
 ghosts' behaviour in the simulations, and the search saves and restores the random state of
 the real game: with or without search, the real ghosts make the same random draws (the games
 of an evaluation are the same games).
+Warning: the waves weaken the search. On 50 paired games (exact ghosts, 100 simulations),
+waves of 16 won 34 games, as many as the agent alone, against 42 one simulation at a time
+(batch=1, the default): a simulation of a wave does not see the results of the others, and
+the virtual loss pushes it away from the best move, which near a ghost is often the only
+good one. The waves are about twice as fast.
 
 Ghost models (ghost_model):
     exact:     the simulated ghosts move by the game's own code: the search knows their rules
@@ -60,7 +65,7 @@ class Node:
 
 class MCTS:
     def __init__(self, agent, n_simulations=100, horizon=10, radius=6, c_puct=1.5,
-                 value_scale=35., batch=16, virtual_loss=10., ghost_model="exact"):
+                 value_scale=35., batch=1, virtual_loss=10., ghost_model="exact"):
         '''
         agent: the A2C agent (policy for the priors and the rollouts, value at the leaves).
         n_simulations: simulations per search.
@@ -68,7 +73,8 @@ class MCTS:
         radius: search only when a ghost is at most this distance (|di| + |dj|) from Pacman.
         c_puct: weight of the exploration term; value_scale: scale of the returns in Q
             (the penalty for being caught, 35, makes Q of order 1).
-        batch: simulations per wave (network evaluations in one batch).
+        batch: simulations per wave (network evaluations in one batch); 1: one simulation
+            at a time (stronger, see the module description).
         virtual_loss: return subtracted from a move while a simulation of the wave goes
             through it, so that the other simulations of the wave try other moves.
         ghost_model: "exact" or "estimated" (see the module description).
