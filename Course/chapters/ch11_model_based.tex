@@ -572,6 +572,20 @@ elsewhere the agent plays alone.
   paths, a search of $100$ simulations is about $2.6$ times faster.
 \end{intuition}
 
+\begin{remark}{Lesson: check a faster search against the slow one}{}
+  The speed has a price. A simulation of a wave does not see the results
+  of the others, and near a ghost there is often a single good move: the
+  virtual loss sends many simulations of each wave to the bad ones. On $70$
+  games played by both versions (exact ghost model, $100$ simulations),
+  waves of $16$ won $52$, one simulation at a time $57$, and the waves
+  overrode the agent half as often. The difference is not significant ($16$
+  against $11$ disagreements), but it was enough to make one simulation at a
+  time the default ($B = 1$). It was also a lesson in method: a result
+  obtained with a first implementation was later compared with one obtained
+  with the faster one, and the disagreement came from the code, not from
+  the question being asked.
+\end{remark}
+
 Comparing two players on the same games is far more precise than comparing
 their win rates on different games: only the games where they disagree
 carry information.
@@ -613,7 +627,7 @@ carry information.
   remaining losses are traps in the middle of the game. With a modest
   search, $82\%$ is a lower bound of what a player \emph{knowing the
   ghosts' rules} can achieve; a fair player, who must estimate them, may
-  do somewhat less. The agent, not the game, is the bottleneck.
+  do less (\cref{pac:fair-mcts}).
 \end{pacman}
 
 \paragraph{The search as teacher.} The search is far too slow to play
@@ -631,6 +645,55 @@ On \code{v2}, four iterations brought the agent alone from $65.9\%$ to
 $67.3\%$ of the games, a gain within the noise: the network learns only a
 small part of what the search adds (\cref{ch:v2-project}).
 
+\subsection{A fair search}
+
+A fair player does not read the ghosts' code: it watches them. The
+\code{estimated} ghost model of \cref{sec:ghost-models} carries over to the
+MCTS (\code{-{}-mcts-ghosts estimated}): in the simulations, each ghost
+chases Pacman along a shortest path with probability $p_{\mathrm{chase}}$,
+flees him with probability $p_{\mathrm{flee}}$ when he has power, and moves
+at random otherwise, the two probabilities being estimated for each ghost
+from its moves since the start of the game (\cref{prop:ghost-estimator}).
+Every game starts from no information.
+
+This model still knows the \emph{form} of the ghosts' behaviour; only its
+two parameters are learnt. It is therefore an optimistic bound for a fair
+player, and in particular for a player that would learn a model of the
+ghosts from scratch, as MuZero learns its model: if a search with this
+model does not beat the agent, a learnt model has little chance to. This
+was decided before the experiment: near the agent's level, a learnt model
+would not be built.
+
+\begin{pacman}{The fair search}{fair-mcts}
+  The run-6 agent (PPO only: the expert agent learnt from the search with
+  the exact model), $100$ simulations one at a time, on the same $60$ games
+  (\code{Tools/mcts\_eval.py}):
+  \begin{center}
+    \begin{tabular}{@{}lc@{}}
+      \toprule
+      Same $60$ games & Won \\
+      \midrule
+      PPO agent alone & $71.7\%$ \\
+      MCTS, estimated ghosts & $66.7\%$ \\
+      MCTS, exact ghosts & $80.0\%$ \\
+      \bottomrule
+    \end{tabular}
+  \end{center}
+  The fair search wins $9$ games that the agent loses and loses $12$ that
+  it wins; an earlier test (another agent, $100$ games) gave $17$ against
+  $14$. The exact search wins $16$ games that the fair search loses, and
+  loses $8$. The search's gain came from knowing the ghosts' rules, not from
+  looking ahead.
+\end{pacman}
+
+\begin{remark}{Lesson: a search is only as good as its model}{}
+  Within one game the estimates rest on few observed moves, and the generic
+  chase differs from the real ghosts' in the close encounters that decide
+  the game. A search trusts its model more than the network does: where the
+  model is wrong, it overrides good moves. Before crediting a search with a
+  gain, measure it with the model a fair player could have.
+\end{remark}
+
 \section{Summary}
 
 \begin{itemize}[nosep]
@@ -645,6 +708,7 @@ small part of what the search adds (\cref{ch:v2-project}).
     expert iteration transfers part of this gain to the network alone.
   \item On game \code{v2}, where the ghosts are chance rather than an
     opponent, an open-loop MCTS guided by the agent and knowing the ghosts'
-    rules wins $82\%$ of the games that the agent alone wins $68\%$ of: the
-    agent is the bottleneck, and the search becomes its teacher.
+    rules wins $82\%$ of the games that the agent alone wins $68\%$ of; with
+    the ghosts' behaviour estimated from their moves, the same search does
+    no better than the agent: the gain was the knowledge of the rules.
 \end{itemize}

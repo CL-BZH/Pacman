@@ -520,10 +520,14 @@ The value of a node must include the reward of the move that leads to it: a move
 the game, and without its -35 the search preferred walking into a ghost in tight spots (it won 3 of
 20 games that the agent alone won 14 times).
 
-To be faster, the simulations run in waves of 16: a "virtual loss" makes the simulations of a wave
-take different branches, and their network evaluations are made in one batch. With a cache of the
-ghosts' shortest paths (`ghost_agents.py`, which changes no game), a search of 100 simulations
-takes about one second on one CPU core, 2.6 times less than one simulation at a time.
+The simulations can run in waves (`batch` in `pacman_mcts.py`): a "virtual loss" makes the
+simulations of a wave take different branches, and their network evaluations are made in one batch.
+Waves of 16 are about twice as fast, but a simulation of a wave does not see the results of the
+others, and the virtual loss pushes it away from the best move, which near a ghost is often the only
+good one. On 70 paired games, waves of 16 won 52 and one simulation at a time 57 (not significant,
+16 against 11 disagreements), and the waves overrode the agent half as often: the default is one
+simulation at a time. A cache of the ghosts' shortest paths (`ghost_agents.py`, which changes no
+game) makes every search faster.
 
 On the same 100 games (`--seed 4001`), with 100 simulations per searched move:
 
@@ -537,9 +541,9 @@ were equally strong, a split at least this lopsided would have a probability of 
 test). The search moves the ghosts with the game's own code: it knows their rules exactly (each
 ghost's aggressiveness, the shortest-path chase), though not the random draws of the real game. A
 fair player would have to estimate these rules by watching the ghosts, as the `estimated` model of
-the look-ahead search does (on `v1`, that model did as well as the exact one; on `v2` it has not
-been measured). 82% is therefore what a modest search achieves knowing the ghosts' rules: the agent,
-not the game, is the bottleneck, at least for a player that knows the ghosts.
+the look-ahead search does (on `v1`, that model did as well as the exact one; on `v2` it does not,
+see "A fair search" below). 82% is therefore what a modest search achieves knowing the ghosts'
+rules, not what a fair player can reach.
 
 #### Expert iteration with the MCTS
 
@@ -627,9 +631,42 @@ Three routes now end at the same level: fine-tuning (run 5, 65.9%), expert itera
 longer schedule (run 6, 64.1%). When more training, more data and a teacher's knowledge all stop at
 the same place, the limit is likely the agent itself: a reflex that maps the last two images to a
 move, where escaping three randomly moving ghosts sometimes needs looking a few moves ahead (the same
-network wins 82% when it can). The next directions are planning at play time, fairly (a search that
-estimates the ghosts' behaviour from their moves), or a network with more to work with (memory, more
-images, a larger field of view).
+network wins 82% when it can). The next directions were planning at play time, fairly (a search
+that estimates the ghosts' behaviour from their moves, measured below), or a network with more to
+work with (memory, more images, a larger field of view).
+
+#### A fair search
+
+`pacman_mcts.py` has a second ghost model, `--mcts-ghosts estimated`: the simulated ghosts follow the
+generic model of the look-ahead search (towards Pacman along a shortest path with probability
+`p_chase`, away from him with probability `p_flee` when he has power, at random otherwise), the two
+probabilities being estimated for each ghost from its moves since the start of the game. Every game
+starts from no information: nothing is carried from one game to the next. The model still knows the
+*form* of the ghosts' behaviour, so it is an optimistic bound for any fair player, including one
+that would learn a model of the ghosts (a "world model"): if this search does not beat the network,
+a learned model has little chance to.
+
+`Tools/mcts_eval.py` plays the three players on the same games (in the notebook
+`Tools/mcts_eval_kaggle.ipynb`, on Kaggle's CPU, which does not use the GPU quota). With run 6
+(100M steps, trained by PPO only: the expert agent learnt from the search with the exact model), 100
+simulations one at a time, on the same 60 games (`--seed 4001`; the 12 hours of a Kaggle session at
+about 18 minutes per game):
+
+| Same 60 games | Won |
+|---|---|
+| run 6 alone (64.1% on 3000 games: these 60 are easier) | 71.7% |
+| run 6 with MCTS, estimated ghosts | 66.7% |
+| run 6 with MCTS, exact ghosts | 80.0% |
+
+The fair search wins 9 games that the agent loses and loses 12 that the agent wins: it does not
+help. An earlier run (run 5, waves of 16, 100 games) gave the same answer, 17 against 14 (71%
+against 68%). The exact search wins 16 games that the fair search loses, and loses 8.
+
+So almost all of what the search added came from knowing the ghosts' rules, not from looking ahead.
+Within one game, the estimates rest on few observed moves, and the generic model's chase differs from
+the real ghosts' in the close encounters that decide a game; a search that trusts a wrong model
+overrides good moves of the network. On this maze, the plateau of about 65% looks close to what a
+fair Pacman of this kind can reach, and a learned world model was not built.
 
 #### What game v2 taught
 
@@ -659,12 +696,21 @@ tells the story in detail.
    the top corners, which would have worked on this maze only.
 7. **Measure the ceiling before investing.** A slow but strong player (the MCTS) showed that the
    agent, not the game, was the bottleneck, and gave a target (82%). Say what the reference player
-   knows: this one knew the ghosts' rules, which a fair player must estimate.
+   knows: this one knew the ghosts' rules. With the rules estimated by watching the ghosts, the same
+   search did no better than the agent alone: the gain was the knowledge, not the search.
 8. **Check a search against the agent alone before trusting it.** The first MCTS lost to the agent
    (3 of 20 games against 14): the value of a move did not include its own reward, so walking into a
    ghost looked best.
 9. **Recognise a plateau.** When several independent routes (more training, a teacher, a longer
    schedule) stop at the same level, look at the agent's design rather than at more training.
+10. **Check a faster version against the slow one.** The waves made the search twice as fast, and
+    were not compared with one simulation at a time on enough games before being used; when a
+    control with the same code disagreed with an earlier result, it was the code that had changed,
+    not the conclusion that had to be trusted. Decide on the complete set of games: a difference
+    that looked clear on 50 games shrank on the next 20.
+11. **Fix a stopping rule before the experiment.** Before measuring the fair search, it was agreed
+    that near 70% (the agent's level) a learned world model would not be worth building. The result
+    then decided, instead of being read to fit a plan.
 
 ## Some explanations about the software
 

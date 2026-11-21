@@ -252,8 +252,8 @@ $68\%$ for the agent alone, a significant difference
 simulations move them with the game's own code, though with random draws of
 their own, not those of the real game. A fair player would have to estimate
 the rules by watching the ghosts; on \code{v1}, the look-ahead search did as
-well with such an estimate as with the exact rules (\cref{sec:ghost-models}),
-but on \code{v2} this has not been measured.
+well with such an estimate as with the exact rules (\cref{sec:ghost-models});
+on \code{v2} it did not (\cref{sec:v2-fair}).
 
 \begin{remark}{Lesson: measure the ceiling before investing}{lesson-ceiling}
   A strong but slow player tells whether the agent or the problem is the
@@ -261,7 +261,8 @@ but on \code{v2} this has not been measured.
   spent on a game whose ceiling was already reached; with it, the agent
   was known to be at least $15$ points short. State what the reference
   player knows: this one knew the ghosts' rules, which a fair player must
-  estimate.
+  estimate, and that turned out to be most of its advantage
+  (\cref{sec:v2-fair}).
 \end{remark}
 
 \begin{remark}{Lesson: check a search against the agent alone}{lesson-check}
@@ -402,6 +403,49 @@ estimates the ghosts' behaviour from their moves; or giving the network
 more to work with, a memory (a recurrent network, more images) or a larger
 field of view.
 
+\section{A fair search}
+\label{sec:v2-fair}
+
+The first direction can be measured cheaply. A search whose ghosts follow a
+generic model, with each ghost's two probabilities estimated from its moves
+in the current game, is fair: it uses only what Pacman sees. It still knows
+the form of the ghosts' behaviour, so it is an optimistic bound for any fair
+planner, including one that would learn a model of the ghosts from scratch
+(a world model). Before running it, a rule was fixed: if this search stays
+near the agent's level, a learnt model would not be worth building.
+
+It stayed there. On the same $60$ games, the run-6 agent won $71.7\%$ alone,
+$66.7\%$ with the fair search and $80.0\%$ with the search knowing the rules
+(\cref{pac:fair-mcts}); an earlier test with another agent gave the same
+answer. Almost all of the search's gain came from knowing the ghosts'
+rules, not from looking ahead. On this maze, the plateau of about $65\%$ is
+close to what a fair player of this kind can reach.
+
+The measurement itself went wrong once. The search had been made twice as
+fast by running its simulations in waves (\cref{sec:mcts-v2}); a control
+run with the same code as the fair search disagreed with the first
+measurement made with the slower code, and the disagreement came from the
+implementation. The question was then asked again, one simulation at a
+time, on a machine with more cores.
+
+\begin{remark}{Lesson: fix the stopping rule before the experiment}%
+  {lesson-stopping}
+  Deciding beforehand what result would stop a line of work (here: a fair
+  search near the agent's level) lets the result decide, instead of being
+  read to fit a plan. It also tells how precise the measurement must be:
+  enough to tell $70\%$ from $80\%$, not more.
+\end{remark}
+
+\begin{remark}{Lesson: change one thing at a time, and control it}%
+  {lesson-control}
+  Two measurements made with two versions of the code differ by the
+  question \emph{and} by the code. A control (the old question with the new
+  code) separates the two; without it, a $10$-point effect of the
+  implementation was nearly reported as an effect of the ghost model. And
+  decide on the complete set of games: a difference that looked clear on
+  $50$ games shrank on the next $20$.
+\end{remark}
+
 \section{The methods}
 
 The agents of this chapter, each evaluated on $3000$ games that played no
@@ -419,6 +463,7 @@ part in its choice (the agent with the search on $100$ games):
     run 6: as run 4, $100$M steps & $64\%$ \\
     \midrule
     agent with the MCTS (slow, knows the ghosts' rules) & $82\%$ \\
+    agent with the MCTS, ghosts estimated (fair, $60$ games) & no gain \\
     \bottomrule
   \end{tabular}
 \end{center}
@@ -451,4 +496,10 @@ points. The methods, in the order they were needed:
     and its targets only as far as they are consistent.
   \item \textbf{Recognise a plateau}: when several independent routes stop
     at the same level, look at the agent's design, not at more training.
+  \item \textbf{Measure fairly}: credit a search only with what a fair
+    player could know; with the ghosts' rules estimated, the search's gain
+    disappeared.
+  \item \textbf{Control the code, fix the stopping rule}: compare a faster
+    implementation with the slow one, and decide beforehand which result
+    ends a line of work.
 \end{enumerate}
