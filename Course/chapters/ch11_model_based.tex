@@ -656,13 +656,10 @@ at random otherwise, the two probabilities being estimated for each ghost
 from its moves since the start of the game (\cref{prop:ghost-estimator}).
 Every game starts from no information.
 
-This model still knows the \emph{form} of the ghosts' behaviour; only its
-two parameters are learnt. It is therefore an optimistic bound for a fair
-player, and in particular for a player that would learn a model of the
-ghosts from scratch, as MuZero learns its model: if a search with this
-model does not beat the agent, a learnt model has little chance to. This
-was decided before the experiment: near the agent's level, a learnt model
-would not be built.
+The model has a generic form, simpler than the real ghosts': ghost $2$
+chases by straight-line distance and can be blocked by walls, and the
+random moves prefer to keep their direction. Only its two parameters per
+ghost are learnt.
 
 \begin{pacman}{The fair search}{fair-mcts}
   The run-6 agent (PPO only: the expert agent learnt from the search with
@@ -693,6 +690,21 @@ would not be built.
   model is wrong, it overrides good moves. Before crediting a search with a
   gain, measure it with the model a fair player could have.
 \end{remark}
+
+How wrong is the model? Simulating each move $100$ times with the game's
+code and $100$ times with the estimated model gives, for each ghost, two
+distributions of its next cell, which can be compared with the real move
+(\code{Tools/ghost\_fidelity.py}, $100$ games). For the ghosts within $6$
+cells of Pacman, the mean log-likelihood of the real move is $-0.750$ with
+the true rules, $-0.776$ with the estimated model and $-1.211$ for a uniform
+choice: per move, the model captures about $94\%$ of what can be predicted.
+Ghosts $0$ and $1$ are well predicted (total-variation distance $0.07$ and
+$0.09$ between the two distributions), ghost $2$ is not ($0.17$; the model
+is barely better than a uniform choice for it). Small errors per move
+compound over the simulated moves of three ghosts, and they were enough to
+cancel the search's gain. A model of the ghosts learnt from many games, as
+MuZero learns its model, would not be limited to a fixed form, and would
+still be fair; but it would have to be very accurate to help.
 
 \section{Summary}
 

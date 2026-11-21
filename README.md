@@ -641,10 +641,8 @@ work with (memory, more images, a larger field of view).
 generic model of the look-ahead search (towards Pacman along a shortest path with probability
 `p_chase`, away from him with probability `p_flee` when he has power, at random otherwise), the two
 probabilities being estimated for each ghost from its moves since the start of the game. Every game
-starts from no information: nothing is carried from one game to the next. The model still knows the
-*form* of the ghosts' behaviour, so it is an optimistic bound for any fair player, including one
-that would learn a model of the ghosts (a "world model"): if this search does not beat the network,
-a learned model has little chance to.
+starts from no information: nothing is carried from one game to the next. The model has a generic
+form, simpler than the real ghosts' (see below), with two parameters per ghost.
 
 `Tools/mcts_eval.py` plays the three players on the same games (in the notebook
 `Tools/mcts_eval_kaggle.ipynb`, on Kaggle's CPU, which does not use the GPU quota). With run 6
@@ -665,8 +663,24 @@ against 68%). The exact search wins 16 games that the fair search loses, and los
 So almost all of what the search added came from knowing the ghosts' rules, not from looking ahead.
 Within one game, the estimates rest on few observed moves, and the generic model's chase differs from
 the real ghosts' in the close encounters that decide a game; a search that trusts a wrong model
-overrides good moves of the network. On this maze, the plateau of about 65% looks close to what a
-fair Pacman of this kind can reach, and a learned world model was not built.
+overrides good moves of the network.
+
+How wrong is the model? `Tools/ghost_fidelity.py` lets the agent play 100 games and, at each move,
+simulates the move 100 times with the game's code and 100 times with the estimated model, giving two
+distributions of each ghost's next cell; the real move is then compared with both. For the ghosts
+within 6 cells of Pacman, the mean log-likelihood of the real move is -0.750 with the true rules,
+-0.776 with the estimated model and -1.211 for a uniform choice: per move, the estimated model
+captures about 94% of what can be predicted. Ghosts 0 and 1, which chase along shortest paths as the
+model assumes, are well predicted (total-variation distance 0.07 and 0.09 between the two
+distributions); ghost 2, which chases by straight-line distance and can be blocked by walls, is not
+(distance 0.17, and the model is barely better than a uniform choice for it). Small errors per move
+were enough to cancel the search's gain: they compound over the simulated moves of three ghosts, and
+the search relies on them exactly where the network's reflex was right.
+
+So the fair search does not show that a fair planner cannot do better. A model of the ghosts learnt
+from many games (a "world model": a network predicting each ghost's next cell, trained by supervised
+learning on recorded games) would not be limited to a fixed form; it would still be fair, Pacman
+learning from experience. But it would have to be very accurate to help.
 
 #### What game v2 taught
 
@@ -708,9 +722,11 @@ tells the story in detail.
     control with the same code disagreed with an earlier result, it was the code that had changed,
     not the conclusion that had to be trusted. Decide on the complete set of games: a difference
     that looked clear on 50 games shrank on the next 20.
-11. **Fix a stopping rule before the experiment.** Before measuring the fair search, it was agreed
-    that near 70% (the agent's level) a learned world model would not be worth building. The result
-    then decided, instead of being read to fit a plan.
+11. **Fix a stopping rule before the experiment, and check its reasoning.** Before measuring the
+    fair search, it was agreed that near 70% (the agent's level) a learned world model would not be
+    worth building, on the argument that the estimated model, knowing the form of the ghosts'
+    behaviour, was an optimistic bound. The argument was wrong: the form was not the ghosts' own,
+    which a measurement of the model (rather than of the search) showed.
 
 ## Some explanations about the software
 
