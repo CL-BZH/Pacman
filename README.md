@@ -682,6 +682,25 @@ from many games (a "world model": a network predicting each ghost's next cell, t
 learning on recorded games) would not be limited to a fixed form; it would still be fair, Pacman
 learning from experience. But it would have to be very accurate to help.
 
+#### Four frames (run 7)
+
+With two frames, the network sees only the last move of each ghost. Run 7 repeats run 4 (60 million
+steps, the same schedule, late starts) with four frames (`N_FRAMES = 4`, 12 hours on a Kaggle T4),
+so that it can see a ghost's last three moves. Its training curve stayed 2 to 3 points below run 4's
+all along (50.5% against 53.2% over the last 6 million steps), but on the same 3000 new games
+(`--seed 16001`, `Tools/mcts_eval.py --configs agent`):
+
+| Same 3000 games | Won |
+|---|---|
+| run 4 (2 frames, 60M steps) | 60.0% |
+| run 7 (4 frames, 60M steps) | 61.3% |
+| run 6 (2 frames, 100M steps) | 64.9% |
+
+Run 7 wins 723 games that run 4 loses and loses 686 that it wins (p = 0.34): no significant gain.
+Run 6 beats both (p = 0.003 against run 7). Seeing more of the ghosts' past did not help; training
+longer did. Once more, the training curve was not the evaluation: it was lower for the agent that
+plays as well or slightly better.
+
 #### What game v2 taught
 
 The work on `v2` went through several wrong turns; the methods that got it out of them are worth

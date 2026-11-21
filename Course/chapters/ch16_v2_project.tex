@@ -435,6 +435,28 @@ measurement made with the slower code, and the disagreement came from the
 implementation. The question was then asked again, one simulation at a
 time, on a machine with more cores.
 
+\begin{pacman}{Four frames}{four-frames}
+  The second direction, more for the network to see, was tried with the
+  cheapest change: four stacked frames instead of two, so that the network
+  sees each ghost's last three moves (run~7, the schedule of run~4). Its
+  training curve stayed $2$ to $3$ points below run~4's to the end, yet on
+  the same $3000$ new games:
+  \begin{center}
+    \begin{tabular}{@{}lc@{}}
+      \toprule
+      Same $3000$ games & Won \\
+      \midrule
+      run 4 ($2$ frames, $60$ million steps) & $60.0\%$ \\
+      run 7 ($4$ frames, $60$ million steps) & $61.3\%$ \\
+      run 6 ($2$ frames, $100$ million steps) & $64.9\%$ \\
+      \bottomrule
+    \end{tabular}
+  \end{center}
+  Run 7 wins $723$ games that run~4 loses and loses $686$ that it wins
+  ($p = 0.34$): no significant gain. Seeing more of the past did not help;
+  training longer did.
+\end{pacman}
+
 \begin{remark}{Lesson: fix the stopping rule before the experiment}%
   {lesson-stopping}
   Deciding beforehand what result would stop a line of work (here: a fair
