@@ -371,6 +371,12 @@ class A2C_PacmanAgent(PacmanAgent):
       and a new game starts from one of these copies with probability
       'late_start_prob' instead of from the beginning, so that the end of the game,
       where most games are lost, is practised more often.
+    - Optional death starts: when Pacman is caught, a copy of his game taken a few
+      moves before (drawn in 'death_start_moves') is kept, and a new game starts from
+      one of these copies with probability 'death_start_prob': Pacman practises the
+      situations in which he lost, the ghosts drawing new random moves each time
+      (a form of prioritised replay of the starting states, as in Prioritized Level
+      Replay). Each copy is used at most 'death_start_reuse' times.
     '''
     def __init__(self, pacman_envs: List[PacmanEnvironment], gamma=0.99, initial_lr=2.5e-4, n_frames=2,
                  gae_lambda=0.95, entropy_coef=0.03, value_loss_coef=0.5, ppo_epochs=4, n_minibatches=4,
@@ -402,7 +408,8 @@ class A2C_PacmanAgent(PacmanAgent):
     def run_episodes(self, total_steps=20_000_000, n_steps=128, episode_max_length=1000,
                      min_lr=None, curriculum_fraction=0., curriculum_start=0.3,
                      late_start_prob=0., late_start_cookies=(10, 40), late_start_buffer=2000,
-                     log_interval=500, save_interval=1_000_000, save_dir="./Tmp",
+                     death_start_prob=0., death_start_moves=(5, 20), death_start_buffer=2000,
+                     death_start_reuse=4, log_interval=500, save_interval=1_000_000, save_dir="./Tmp",
                      start_step=0, max_seconds=None, history=None):
         '''
         Train the agent.
@@ -420,6 +427,12 @@ class A2C_PacmanAgent(PacmanAgent):
                 replaces a random one when the buffer is full). The log tells the two kinds of
                 games apart ("late_start"); the printed rates are those of the games started
                 from the beginning.
+            death_start_prob: probability that a new game starts from a copy of a game taken
+                a number of moves before Pacman was caught, drawn uniformly in death_start_moves
+                (min, max). The copies come from the games started from the beginning or late
+                (not from the death starts themselves); death_start_buffer copies are kept, each
+                used at most death_start_reuse times. The log marks these games
+                ("death_start"); death_start_prob + late_start_prob must be at most 1.
             log_interval: print statistics every 'log_interval' finished games.
             save_interval: save the network every 'save_interval' steps (and, for a continuation,
                 Adam's state in pacman_a2c_optimizer.pth and the progress in
@@ -455,24 +468,47 @@ class A2C_PacmanAgent(PacmanAgent):
         snapshots = []
         late_game = [False] * n_envs
         copy_at = [None] * n_envs
+        # Death starts: the last moves of each game (copies), and the copies kept from the
+        # games lost, with the number of times each was used
+        if death_start_prob + late_start_prob > 1:
+            raise ValueError("death_start_prob + late_start_prob must be at most 1")
+        recent_states = [deque(maxlen=death_start_moves[1] + 1) for _ in range(n_envs)]
+        death_snapshots, death_uses = [], []
+        death_game = [False] * n_envs
+
+        def restore(env, snapshot, levels):
+            # Continue a copy of an earlier game (copied again: the snapshot stays unchanged)
+            env.__dict__.update(snapshot.clone().__dict__)
+            env.ghost_aggressiveness_levels = levels
+            for ghost in env.ghosts + env.house_ghosts + env.dead_ghosts:
+                ghost.aggressiveness = levels[ghost.id]
 
         def new_game(env_idx, scale):
             env = self.pacman_envs[env_idx]
             # Each environment gets its own list (the config's list is shared)
             levels = [a * scale for a in base_levels[env_idx]]
             env.ghost_aggressiveness_levels = levels
-            if late_start_prob > 0 and len(snapshots) >= 100 and np.random.random() < late_start_prob:
-                # Continue a copy of an earlier game (copied again: the snapshot stays unchanged)
-                env.__dict__.update(snapshots[np.random.randint(len(snapshots))].clone().__dict__)
-                env.ghost_aggressiveness_levels = levels
-                for ghost in env.ghosts + env.house_ghosts + env.dead_ghosts:
-                    ghost.aggressiveness = levels[ghost.id]
+            u = np.random.random() if (late_start_prob > 0 or death_start_prob > 0) else 1.
+            death_game[env_idx] = late_game[env_idx] = False
+            if u < death_start_prob and len(death_snapshots) >= 50:
+                k = np.random.randint(len(death_snapshots))
+                restore(env, death_snapshots[k], levels)
+                death_uses[k] += 1
+                if death_uses[k] >= death_start_reuse:
+                    death_snapshots[k], death_uses[k] = death_snapshots[-1], death_uses[-1]
+                    death_snapshots.pop()
+                    death_uses.pop()
+                death_game[env_idx], copy_at[env_idx] = True, None
+            elif u < death_start_prob + late_start_prob and len(snapshots) >= 100:
+                restore(env, snapshots[np.random.randint(len(snapshots))], levels)
                 late_game[env_idx], copy_at[env_idx] = True, None
             else:
                 self.reset_env(env_idx)
-                late_game[env_idx] = False
                 copy_at[env_idx] = (np.random.randint(late_start_cookies[0], late_start_cookies[1] + 1)
                                     if late_start_prob > 0 else None)
+            recent_states[env_idx].clear()
+            if death_start_prob > 0:
+                recent_states[env_idx].append(env.clone())
             return self.stacked_observation(env_idx, reset=True)
 
         scale = curriculum_scale(0)
@@ -543,6 +579,23 @@ class A2C_PacmanAgent(PacmanAgent):
                     buf_rewards[t, env_idx] = r
                     buf_dones[t, env_idx] = float(done or truncated)
 
+                    if death_start_prob > 0:
+                        if env.dead and not death_game[env_idx]:
+                            # Keep a copy of the game taken some moves before Pacman was caught
+                            # (recent_states[-1 - m]: m moves before the move that lost)
+                            past = recent_states[env_idx]
+                            lo, hi = death_start_moves[0], min(death_start_moves[1], len(past) - 1)
+                            if hi >= lo:
+                                snap = past[-1 - np.random.randint(lo, hi + 1)]
+                                if len(death_snapshots) < death_start_buffer:
+                                    death_snapshots.append(snap)
+                                    death_uses.append(0)
+                                else:
+                                    k = np.random.randint(death_start_buffer)
+                                    death_snapshots[k], death_uses[k] = snap, 0
+                        elif not (done or truncated):
+                            recent_states[env_idx].append(env.clone())
+
                     if done or truncated:
                         history.append({"step": step, "reward": ep_rewards[env_idx],
                                         "length": ep_lengths[env_idx],
@@ -551,7 +604,8 @@ class A2C_PacmanAgent(PacmanAgent):
                                         "ghosts_eaten": env.n_ghosts_eaten,
                                         "cookies_left": len(env.cookies) + len(env.power_cookies),
                                         "power_cookies_eaten": env.n_eaten_power_cookies,
-                                        "aggressiveness_scale": scale, "late_start": late_game[env_idx]})
+                                        "aggressiveness_scale": scale, "late_start": late_game[env_idx],
+                                        "death_start": death_game[env_idx]})
                         obs = new_game(env_idx, scale)
                         ep_rewards[env_idx] = 0.
                         ep_lengths[env_idx] = 0
@@ -574,8 +628,10 @@ class A2C_PacmanAgent(PacmanAgent):
                 logged = len(history)
                 # Rates of the games started from the beginning (comparable with a training
                 # without late starts)
-                recent = [h for h in history[-log_interval:] if not h["late_start"]] or history[-log_interval:]
+                recent = [h for h in history[-log_interval:]
+                          if not h["late_start"] and not h.get("death_start", False)] or history[-log_interval:]
                 late = [h for h in history[-log_interval:] if h["late_start"]]
+                death = [h for h in history[-log_interval:] if h.get("death_start", False)]
                 now = time.time()
                 sps = (step - last_log_step) / (now - last_log_time)
                 last_log_time, last_log_step = now, step
@@ -586,6 +642,9 @@ class A2C_PacmanAgent(PacmanAgent):
                 if late_start_prob > 0:
                     curriculum_str += (f"late starts {100*len(late)/log_interval:4.1f}% won "
                                        f"{100*np.mean([h['won'] for h in late]) if late else 0:5.1f}% | ")
+                if death_start_prob > 0:
+                    curriculum_str += (f"death starts {100*len(death)/log_interval:4.1f}% won "
+                                       f"{100*np.mean([h['won'] for h in death]) if death else 0:5.1f}% | ")
                 print(f"{timedelta(seconds=int(now - start))} | step {step:>9} | games {len(history):>7} | "
                       f"{curriculum_str}reward {avg('reward'):7.2f} | "
                       f"won {100*avg('won'):5.1f}% lost {100*avg('lost'):5.1f}% aborted {100*avg('aborted'):4.1f}% | "
