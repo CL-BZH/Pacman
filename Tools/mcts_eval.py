@@ -9,7 +9,8 @@ a batch already in OUT is not replayed: the run can be restarted where it stoppe
 
 Usage (from the repository's root):
     python3 Tools/mcts_eval.py CHECKPOINT [--games 100] [--seed 4001] [--sims 100]
-                               [--horizon 10] [--batch 1] [--workers 4] [--out mcts_eval.jsonl]
+                               [--horizon 10] [--batch 1] [--workers 4] [--frames 2]
+                               [--configs agent,exact,estimated] [--out mcts_eval.jsonl]
 Then:
     python3 Tools/mcts_eval.py CHECKPOINT --summary --out mcts_eval.jsonl
 '''
@@ -28,7 +29,7 @@ def player(config, ckpt, sims, horizon, batch):
         import torch, pacman_play as pp
         from pacman_mcts import MCTS
         torch.set_num_threads(1)
-        sys.argv = ["pacman_play.py", "-g", "v2", "-a", "a2c"]
+        sys.argv = ["pacman_play.py", "-g", "v2", "-a", "a2c", "-f", os.environ.get("MCTS_EVAL_FRAMES", "2")]
         args = pp.parse_args()
         env, agent, stockastic, _ = pp.make_player(args, ckpt, quiet=True)
         search = None if config == "agent" else MCTS(agent, n_simulations=sims, horizon=horizon,
@@ -98,6 +99,7 @@ if __name__ == "__main__":
     p.add_argument("--horizon", type=int, default=10)
     p.add_argument("--batch", type=int, default=1, help="simulations per wave (1: one at a time)")
     p.add_argument("--workers", type=int, default=os.cpu_count())
+    p.add_argument("--frames", type=int, default=2, help="frames stacked by the agent's network")
     p.add_argument("--configs", default="agent,exact,estimated")
     p.add_argument("--out", default="mcts_eval.jsonl")
     p.add_argument("--summary", action="store_true")
@@ -105,6 +107,7 @@ if __name__ == "__main__":
     if a.summary:
         summary(a.out)
         sys.exit()
+    os.environ["MCTS_EVAL_FRAMES"] = str(a.frames)   # (read by the worker processes)
     done = {(r["config"], r["batch"]) for r in load(a.out)}
     configs = a.configs.split(",")
     # The agent alone first (fast), then the two searches interleaved batch by batch
