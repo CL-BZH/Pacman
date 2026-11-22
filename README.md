@@ -701,6 +701,30 @@ Run 6 beats both (p = 0.003 against run 7). Seeing more of the ghosts' past did 
 longer did. Once more, the training curve was not the evaluation: it was lower for the agent that
 plays as well or slightly better.
 
+#### Death starts (run 8)
+
+Late starts practise the end of the game; death starts practise the situations in which Pacman was
+caught. When Pacman loses, a copy of his game taken 5 to 20 moves before (drawn at random) is kept
+(at most 2000 copies, each used at most 4 times), and a new game starts from one of these copies
+with probability `death_start_prob`; the ghosts draw new random moves each time, so Pacman meets the
+same trap with different outcomes. It is a form of prioritised replay of the starting states, as
+Prioritized Level Replay replays the levels where the agent does worst. Copying a game costs 7
+microseconds, so the last 20 positions of every game are kept.
+
+Run 8 repeats run 6 (100 million steps, 21 hours on Kaggle) with `DEATH_START_PROB = 0.2` and
+`LATE_START_PROB = 0.25`: 55% of the games start from the beginning. The death-start games were won
+29% of the time at first and 66% at the end, and the games started from the beginning were won 1 to
+2 points more often than in run 6 all along the training. But on the same 3000 new games
+(`--seed 16001`):
+
+| Same 3000 games | Won |
+|---|---|
+| run 6 | 64.9% |
+| run 8 (death starts) | 64.4% |
+
+Run 8 wins 665 games that run 6 loses and loses 680 that it wins (p = 0.70): no gain. Pacman learnt
+to escape his traps more often in training, without playing better from the start of a game.
+
 #### What game v2 taught
 
 The work on `v2` went through several wrong turns; the methods that got it out of them are worth

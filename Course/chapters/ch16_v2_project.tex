@@ -457,6 +457,19 @@ time, on a machine with more cores.
   training longer did.
 \end{pacman}
 
+\begin{pacman}{Death starts}{death-starts}
+  Late starts practise the end of the game; \emph{death starts} practise the
+  situations in which Pacman lost: a copy of the game taken $5$ to $20$ moves
+  before he was caught is kept, and $20\%$ of the new games start from one of
+  these copies, the ghosts drawing new random moves each time (a prioritised
+  replay of the starting states, as in Prioritized Level Replay). Run~8
+  repeats run~6 with them. The death-start games were won $29\%$ of the time
+  at first and $66\%$ at the end, and the games started from the beginning
+  $1$ to $2$ points more often than in run~6 all along. Yet on the same
+  $3000$ new games, run~8 won $64.4\%$ and run~6 $64.9\%$ ($665$ against
+  $680$ disagreements, $p = 0.70$): no gain.
+\end{pacman}
+
 \begin{remark}{Lesson: fix the stopping rule before the experiment}%
   {lesson-stopping}
   Deciding beforehand what result would stop a line of work (here: a fair
