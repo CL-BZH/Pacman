@@ -701,6 +701,21 @@ Run 6 beats both (p = 0.003 against run 7). Seeing more of the ghosts' past did 
 longer did. Once more, the training curve was not the evaluation: it was lower for the agent that
 plays as well or slightly better.
 
+Does Pacman need two frames at all? With one frame, he sees where each ghost is but not where it is
+going. Run 9 repeats run 4 with `N_FRAMES = 1` (11 hours on Kaggle, a little faster). Its training
+curve was the same as run 4's, and on the same 3000 games its final network won **65.8%**, against
+60.0% for run 4 (797 against 624 disagreements, p < 0.001). But that does not show that one frame is
+better than two: each setting was trained once, and the last checkpoints of run 9 won 60.4% (57M
+steps), 60.8% (58M) and 62.9% (59M). The win rate rose by 5 points over the last 3 million steps,
+while the learning rate reached its minimum; run 4 ended that phase lower. The paired test is
+exact for the two networks, not for the settings that produced them. What run 9 does show is that a
+second frame is not needed.
+
+Was the end of the schedule too short? Run 9 was continued for 20 million steps at its final
+learning rate (2.5e-5, 2 hours on Colab): 66.1% after 10 million steps, 64.2% after 20 million
+(p = 0.85 and 0.19 against its 60M network). The rise at the end of run 9 brought it to the plateau,
+where it stays; stopping too early is not what limits Pacman.
+
 #### Death starts (run 8)
 
 Late starts practise the end of the game; death starts practise the situations in which Pacman was
@@ -815,6 +830,13 @@ tells the story in detail.
     worth building, on the argument that the estimated model, knowing the form of the ghosts'
     behaviour, was an optimistic bound. The argument was wrong: the form was not the ghosts' own,
     which a measurement of the model (rather than of the search) showed.
+12. **A final checkpoint is a sample.** Within one run, the last checkpoints differed by up to 5
+    points, more than the difference between two settings being measured: evaluate several
+    checkpoints near the end of a run, and repeat a run before crediting its setting. Continuing a
+    run at a small learning rate tells whether it had stopped too early.
+13. **Compare behaviours, not only scores.** Maps of what the agents do (the last cookies, where
+    they are caught), compared with a split-half reference, showed that all the agents learnt the
+    same strategy.
 
 ## Some explanations about the software
 

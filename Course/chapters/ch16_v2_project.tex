@@ -457,6 +457,38 @@ time, on a machine with more cores.
   training longer did.
 \end{pacman}
 
+\begin{pacman}{One frame}{one-frame}
+  Is the second frame needed at all? With one frame, the network sees where
+  each ghost is, not where it is going. Run~9 repeats run~4 with one frame.
+  Its training curve was the same as run~4's, and on the same $3000$ games
+  its final network won $65.8\%$, against $60.0\%$ for run~4 ($797$ against
+  $624$ disagreements, $p < 0.001$). Its last checkpoints, on the same games:
+  \begin{center}
+    \begin{tabular}{@{}lcccc@{}}
+      \toprule
+      Steps (millions) & $57$ & $58$ & $59$ & $60$ \\
+      \midrule
+      Won & $60.4\%$ & $60.8\%$ & $62.9\%$ & $65.8\%$ \\
+      \bottomrule
+    \end{tabular}
+  \end{center}
+  The rise of $5$ points over the last $3$ million steps, as the learning
+  rate reached its minimum, is larger than the difference being measured.
+  Continued for $20$ million more steps at that learning rate, run~9 won
+  $66.1\%$ (after $10$ million) and $64.2\%$ (after $20$ million): it had
+  reached the plateau, and stays there. A second frame is not needed; that
+  one frame is \emph{better} is not shown.
+\end{pacman}
+
+\begin{remark}{Lesson: a final checkpoint is a sample}{lesson-checkpoint}
+  A paired test on $3000$ games is exact for the two networks compared, not
+  for the settings that produced them: two runs with the same settings, or
+  two checkpoints of one run, can differ by several points. Evaluate several
+  checkpoints near the end of a run, repeat a run before crediting its
+  setting, and continue a run at a small learning rate to see whether it had
+  stopped too early.
+\end{remark}
+
 \begin{pacman}{Death starts}{death-starts}
   Late starts practise the end of the game; \emph{death starts} practise the
   situations in which Pacman lost: a copy of the game taken $5$ to $20$ moves
@@ -644,6 +676,9 @@ points. The methods, in the order they were needed:
   \item \textbf{Control the code, fix the stopping rule}: compare a faster
     implementation with the slow one, and decide beforehand which result
     ends a line of work.
+  \item \textbf{Evaluate several checkpoints}: the final one is a sample;
+    a setting is credited only when the difference survives its
+    neighbouring checkpoints, or a second run.
   \item \textbf{Compare behaviours, not only scores}: maps of what the
     agents do, compared by correlation against a split-half reference, and
     common losses against the independent expectation.
