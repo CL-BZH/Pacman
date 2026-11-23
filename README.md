@@ -725,6 +725,51 @@ Run 8 repeats run 6 (100 million steps, 21 hours on Kaggle) with `DEATH_START_PR
 Run 8 wins 665 games that run 6 loses and loses 680 that it wins (p = 0.70): no gain. Pacman learnt
 to escape his traps more often in training, without playing better from the start of a game.
 
+#### Do all the agents play alike?
+
+Five agents (runs 4, 6, 7, 8 and the expert agent) played the same 1000 games (`--seed 1`,
+`Tools/endgame_maps.py`). For each agent, how often each cell is among the last 10 cookies (top),
+and where Pacman is caught (bottom):
+
+![End-game maps of five agents](./Media/v2_endgame_agents.png)
+
+To compare two maps, each is read as a list of 163 numbers, one per open cell of the maze, and the
+two lists are compared with the Pearson correlation coefficient
+
+    r(x, y) = sum_c (x_c - mean(x)) (y_c - mean(y)) / sqrt( sum_c (x_c - mean(x))^2  sum_c (y_c - mean(y))^2 )
+
+It is 1 when the two maps are the same up to a scale and an offset (the same cells hot, the same cells
+cold), 0 when they are unrelated. It compares the *shape* of the maps, not their level: an agent
+that is caught twice as often in the same places gives r = 1.
+
+A correlation needs a reference: two maps of the *same* agent, made from two halves of its games
+(even and odd games), are not identical either, because 500 games are a finite sample. These
+split-half correlations give the highest value that the noise allows:
+
+| | Between two agents | Same agent, two halves of its games |
+|---|---|---|
+| Last 10 cookies | 0.90 to 0.97 | 0.96 to 0.98 |
+| Where caught | 0.62 to 0.78 | 0.57 to 0.86 |
+
+(A map made from 1000 games is less noisy than one made from 500, so the reference for the full maps
+is a little higher than the split-half value.) The maps of the last cookies are almost as alike
+between agents as between two halves of one agent's games: all the agents eat the maze in the same
+order and leave the same cookies for the end, those of the four small dead ends (two at the top, two
+at the bottom), where Pacman has a single way out. The maps of the catches are noisier (each comes
+from 300 to 450 lost games), and their differences between agents are mostly within that noise.
+
+Which games are lost is another question. If the losses of two agents were independent, the number
+of games lost by both would be about `n q_A q_B` (n games, loss rates q_A and q_B). Observed: run 6
+and the expert agent lose 101 games in common, 99 expected; over the ten pairs of agents the
+observed numbers are within about 15 of the expected ones. 104 games are won by all five agents
+(104 expected) and 12 lost by all five (6 expected). There are almost no "hard games": a seed does
+not fix a game, since the ghosts' random draws follow different courses as soon as two agents play
+differently, and the losses come from situations that arise during the game.
+
+So the agents, however they were trained, learnt the same strategy and differ in how reliably they
+carry it out; the strategy leaves for the end the cells where the end game is most dangerous. No
+change of training tried so far changed the strategy itself.
+
 #### What game v2 taught
 
 The work on `v2` went through several wrong turns; the methods that got it out of them are worth

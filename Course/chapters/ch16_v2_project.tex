@@ -490,6 +490,104 @@ time, on a machine with more cores.
   $50$ games shrank on the next $20$.
 \end{remark}
 
+\section{Do all the agents play alike?}
+\label{sec:v2-alike}
+
+Six ways of training ended near the same level. Do the agents also play the
+same way? Five of them (runs 4, 6, 7, 8 and the expert agent) played the
+same $1000$ games, and for each agent two maps were made, as in
+\cref{fig:v2-heatmap}: how often each cell is among the last $10$ cookies,
+and where Pacman is caught (\cref{fig:v2-alike},
+\code{Tools/endgame\_maps.py}).
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\textwidth]{../Media/v2_endgame_agents.png}
+  \caption{Five agents on the same $1000$ games: how often each cell is
+    among the last $10$ cookies (top, \% of the games that reach $10$
+    cookies left) and where Pacman is caught (bottom, \% of the lost
+    games).}
+  \label{fig:v2-alike}
+\end{figure}
+
+The maps look alike; a number says how much.
+
+\begin{definition}{Correlation of two maps}{map-correlation}
+  Let $x = (x_c)$ and $y = (y_c)$ be two maps, read as lists of numbers
+  indexed by the $K$ open cells $c$ of the maze ($K = 163$ here), with means
+  $\bar x$ and $\bar y$. Their \emph{(Pearson) correlation} is
+  \begin{equation}
+    r(x, y) = \frac{\sum_c (x_c - \bar x)(y_c - \bar y)}
+      {\sqrt{\sum_c (x_c - \bar x)^2} \sqrt{\sum_c (y_c - \bar y)^2}}.
+  \end{equation}
+\end{definition}
+
+It is the cosine of the angle between the two centred vectors
+$x - \bar x$ and $y - \bar y$ of $\mathbb{R}^K$, so $-1 \le r \le 1$
+(Cauchy--Schwarz), and $r = 1$ exactly when $y = a x + b$ with $a > 0$: the
+same cells hot and the same cells cold. The correlation compares the
+\emph{shape} of two maps, not their level: an agent caught twice as often in
+the same places gives $r = 1$.
+
+\begin{remark}{Lesson: a similarity needs a reference}{lesson-reference}
+  Is $0.7$ a high correlation? Two maps of the \emph{same} agent, made from
+  two halves of its games (the even and the odd games), are not identical
+  either: each is a finite sample. Their correlation, the \emph{split-half}
+  correlation, is the most that the noise allows. A map made from all the
+  games is less noisy than one made from half of them, so the reference for
+  the full maps is a little higher than the split-half value.
+\end{remark}
+
+\begin{center}
+  \begin{tabular}{@{}lcc@{}}
+    \toprule
+    & Between two agents & Same agent, two halves \\
+    \midrule
+    Last $10$ cookies & $0.90$ to $0.97$ & $0.96$ to $0.98$ \\
+    Where caught & $0.62$ to $0.78$ & $0.57$ to $0.86$ \\
+    \bottomrule
+  \end{tabular}
+\end{center}
+
+The maps of the last cookies are almost as alike between agents as between
+two halves of the games of one agent: all the agents eat the maze in the
+same order and leave the same cookies for the end, those of the four small
+dead ends, where Pacman has a single way out. The maps of the catches,
+made from $300$ to $450$ lost games each, are noisier, and their differences
+between agents are mostly within that noise.
+
+Do the agents also lose the same games? The question needs a reference too.
+
+\begin{proposition}{Common losses of independent agents}{common-losses}
+  Two agents play the same $n$ games and lose each game with probabilities
+  $q_A$ and $q_B$. If their losses are independent, the expected number of
+  games lost by both is $n q_A q_B$, and by all of $m$ agents
+  $n \prod_{k=1}^m q_k$ (the same with the win probabilities for the games
+  won by all).
+\end{proposition}
+
+\begin{proof}
+  A game is lost by both with probability $q_A q_B$ when the two events are
+  independent; the expected count is the sum of these probabilities over the
+  $n$ games (linearity of expectation). The same holds for $m$ agents.
+\end{proof}
+
+With the observed loss rates as estimates of the $q_k$: run~6 and the expert
+agent lose $101$ games in common, $99$ expected; over the ten pairs of
+agents, the observed numbers are within about $15$ of the expected ones.
+$104$ games are won by all five agents ($104$ expected) and $12$ are lost by
+all five ($6$ expected). There are almost no ``hard games'': a seed does not
+fix a game, since the ghosts' random draws follow different courses as soon
+as two agents play differently. The losses come from situations that arise
+during the game.
+
+\begin{pacman}{One strategy}{one-strategy}
+  However they were trained, the agents learnt the same strategy and differ
+  in how reliably they carry it out. That strategy leaves for the end the
+  cells where the end game is most dangerous, the dead ends. No change of
+  training tried so far changed the strategy itself.
+\end{pacman}
+
 \section{The methods}
 
 The agents of this chapter, each evaluated on $3000$ games that played no
@@ -546,4 +644,7 @@ points. The methods, in the order they were needed:
   \item \textbf{Control the code, fix the stopping rule}: compare a faster
     implementation with the slow one, and decide beforehand which result
     ends a line of work.
+  \item \textbf{Compare behaviours, not only scores}: maps of what the
+    agents do, compared by correlation against a split-half reference, and
+    common losses against the independent expectation.
 \end{enumerate}
