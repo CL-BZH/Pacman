@@ -540,6 +540,7 @@ class A2C_PacmanAgent(PacmanAgent):
             pd.DataFrame(history).to_csv(save_dir / "pacman_a2c_training_log.csv", index=False)
             with open(save_dir / "pacman_a2c_progress.json", "w") as f:
                 json.dump({"step": int(step), "total_steps": int(total_steps), "initial_lr": self.lr,
+                           "gamma": gamma,
                            "min_lr": min_lr, "curriculum_fraction": curriculum_fraction,
                            "curriculum_start": curriculum_start}, f)
 
