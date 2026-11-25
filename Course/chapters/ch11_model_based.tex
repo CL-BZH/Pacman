@@ -445,7 +445,10 @@ each iteration also measures its progress.
   spent in the search (on CPU). The search disagreed with the agent
   $0.27$ times per game at the first iteration and $0.12$ at the last, and
   the network reproduced $76\%$ of the corrections of its training data.
-  On the same $1000$ games:
+  On the same $1000$ games, another set than that of
+  \cref{pac:search-results} (on which \code{PPO\_1} alone wins $97.1\%$
+  instead of $96.1\%$: the levels vary from one set of games to another,
+  only the differences inside a table are reliable):
   \begin{center}
     \begin{tabular}{@{}lcc@{}}
       \toprule
@@ -465,12 +468,13 @@ each iteration also measures its progress.
 \section{What is left?}
 
 The repository classifies the lost games by cause (\code{pacman\_play.py}).
-For the PPO agent alone, out of about $38$ losses in $1000$ games, $2$ come
-from the off-by-one, $1$ from a ghost catching Pacman just after his power
-ended, $6$ from \emph{bad starts} (Pacman caught in the first five moves),
-and the others from traps. With the search, the same three bad starts are
-lost in every configuration, which suggests that they cannot be won. The
-$15$ to $18$ remaining losses resist both the search and expert iteration:
+For the PPO agent alone, out of about $38$ losses on the games of
+\cref{pac:search-results}, $2$ come from the off-by-one, $1$ from a ghost
+catching Pacman just after his power ended, $6$ from \emph{bad starts}
+(Pacman caught in the first five moves), and the others from traps. On the
+games of \cref{pac:expert-results}, $3$ bad starts are lost in all four
+configurations of the table, which suggests that they cannot be won, and
+the $15$ to $18$ other losses resist both the search and expert iteration:
 they are probably traps from which the agent's own policy, which plays the
 simulations, cannot escape either. Going further would require a deeper
 search (MCTS), or, following AlphaZero, alternating the improvement of the
@@ -479,11 +483,11 @@ search and of the network over many more iterations.
 \section{Game v2: MCTS against chance}
 \label{sec:mcts-v2}
 
-On game \code{v2} (\cref{sec:v2}) the best PPO agent wins about $64\%$ of
+On game \code{v2} (\cref{sec:v2}) the best PPO agent wins about $65\%$ of
 the games, and the short search of this chapter does not help: on $60$
-games, an earlier \code{v2} agent won $53\%$ of them with
-\code{-{}-search 20} and $54\%$ without.
-Is $64\%$ good? Nothing so far tells what a strong player could do: with
+games, an earlier \code{v2} agent won about $53\%$ of them, with or
+without \code{-{}-search 20}.
+Is $65\%$ good? Nothing so far tells what a strong player could do: with
 one life and three ghosts that never stop chasing, some games may be lost
 whatever Pacman does. A slow but strong player answers the question: if it
 wins much more, the agent is the bottleneck; if not, the game is.
@@ -508,24 +512,30 @@ assumed the worst ghost moves would see traps everywhere.
   of the root.
 \end{definition}
 
-In Pacman, the open-loop tree loses nothing on Pacman's side: his moves are
-deterministic, so a sequence of moves always leads him to the same cells;
-only the ghosts differ from one simulation to the next.
+In Pacman, a sequence of moves always leads Pacman to the same cells, since
+his moves are deterministic; only the ghosts differ from one simulation to
+the next. The open-loop tree still loses something: a later move cannot
+depend on where the ghosts went in between, so the tree values fixed plans,
+not plans that react to the ghosts, and the difference matters most in
+close encounters.
 
 \begin{remark}{The reward belongs to the move}{edge-reward}
   The value of a node is the return of the \emph{move that leads to it},
   its own reward included:
   \begin{equation}
-    G_d = r_d + \gamma\, G_{d+1}, \qquad G_D = \text{value of the leaf},
+    G_d = r_d + \gamma\, G_{d+1} \quad (d = D, \dots, 1), \qquad
+    G_{D+1} = \text{value estimated at the leaf},
   \end{equation}
-  where $r_d$ is the reward of the $d$-th move of the path and $G_d$ is
-  added to the statistics of the node it leads to. A first version of the
-  repository's search added to each node the return \emph{from} that node
-  on, without the reward of the move into it. A move onto a ghost ends the
-  game: its node is terminal, of value $0$, and the penalty $-35$ was
-  counted nowhere. In a tight spot, where every safe move had a slightly
-  negative outlook, walking into the ghost looked best: the search won $3$
-  of $20$ games that the agent alone won $14$ times.
+  where $r_d$ is the reward of the $d$-th move of the path, the leaf is the
+  node reached by the $D$-th move, its value estimate is the return of the
+  rollout plus the value at its end ($0$ if the game ended), and $G_d$ is
+  added to the statistics of the node the $d$-th move leads to. A first
+  version of the repository's search added to each node the return
+  \emph{from} that node on, without the reward of the move into it. A move
+  onto a ghost ends the game: its node is terminal, of value $0$, and the
+  penalty $-35$ was counted nowhere. In a tight spot, where every safe move
+  had a slightly negative outlook, walking into the ghost looked best: the
+  search won $3$ of $20$ games that the agent alone won $14$ times.
 \end{remark}
 
 \paragraph{The search of the repository.} \code{pacman\_mcts.py} combines
@@ -586,9 +596,12 @@ elsewhere the agent plays alone.
   the question being asked.
 \end{remark}
 
-Comparing two players on the same games is far more precise than comparing
-their win rates on different games: only the games where they disagree
-carry information.
+Comparing two players on the same games is never less precise than
+comparing their win rates on different games, and much more precise when
+some games are hard (or easy) for both: only the games where they disagree
+carry information. On Pacman the gain turns out to be small, since a seed
+does not fix a game (\cref{sec:v2-alike}), but the comparison on the same
+games leads to a simple exact test.
 
 \begin{proposition}{Comparing two players on the same games}{sign-test}
   Two players play the same $n$ games. Let $b$ be the number of games won
@@ -596,9 +609,11 @@ carry information.
   players are equally strong, each disagreement is equally likely to go
   either way, independently of the others, and given $b + c = m$, $b$
   follows the binomial law $\mathrm{Bin}(m, 1/2)$. The probability of a
-  split at least as lopsided as the one observed is
+  split at least as lopsided as the one observed, in either direction
+  (the two-sided \emph{sign test}), is
   \begin{equation}
-    p = \frac{1}{2^m} \sum_{k = b}^{m} \binom{m}{k} \quad (b > m / 2).
+    p = \min\Bigl(1,\ \frac{2}{2^m} \sum_{k = \max(b, c)}^{m}
+    \binom{m}{k}\Bigr).
   \end{equation}
 \end{proposition}
 
@@ -607,7 +622,8 @@ carry information.
   nothing about which is stronger. Under the hypothesis, each game where
   the players disagree is won by the first with probability $1/2$,
   independently, so the number of such games among the $m$ disagreements
-  is $\mathrm{Bin}(m, 1/2)$; $p$ is its upper tail at $b$.
+  is $\mathrm{Bin}(m, 1/2)$, a law symmetric about $m/2$; $p$ is the sum of
+  its two tails beyond the observed split.
 \end{proof}
 
 \begin{pacman}{How good can a player be at v2?}{mcts-ceiling}
@@ -623,11 +639,12 @@ carry information.
     \end{tabular}
   \end{center}
   The MCTS player wins $26$ games that the agent loses and loses $12$ that
-  the agent wins: $p \approx 0.017$ (\cref{prop:sign-test}). All the
-  remaining losses are traps in the middle of the game. With a modest
-  search, $82\%$ is a lower bound of what a player \emph{knowing the
-  ghosts' rules} can achieve; a fair player, who must estimate them, may
-  do less (\cref{pac:fair-mcts}).
+  the agent wins: $p \approx 0.034$ (\cref{prop:sign-test}). All the
+  remaining losses are traps in the middle of the game. $82\%$ (about
+  $\pm 4$ points on $100$ games) is what a modest search achieves
+  \emph{knowing the ghosts' rules}; a stronger search could do better, and
+  a fair player, who must estimate the rules, may do less
+  (\cref{pac:fair-mcts}).
 \end{pacman}
 
 \paragraph{The search as teacher.} The search is far too slow to play
@@ -677,10 +694,15 @@ ghost are learnt.
     \end{tabular}
   \end{center}
   The fair search wins $9$ games that the agent loses and loses $12$ that
-  it wins; an earlier test (another agent, $100$ games) gave $17$ against
-  $14$. The exact search wins $16$ games that the fair search loses, and
-  loses $8$. The search's gain came from knowing the ghosts' rules, not from
-  looking ahead.
+  it wins ($p = 0.66$); an earlier test (another agent, $100$ games, with
+  the waves of $16$ simulations) gave $17$ against $14$. The exact search
+  wins $16$ games that the fair search loses and loses $8$ ($p = 0.15$),
+  and against the agent alone $16$ against $11$ ($p = 0.44$). Sixty games
+  are too few to separate these players: the standard error of a paired
+  difference is about $8$ points. The results are consistent with the
+  search's gain coming from knowing the ghosts' rules rather than from
+  looking ahead (the exact search's gain over the agent was significant on
+  the $100$ games above), but they do not establish it.
 \end{pacman}
 
 \begin{remark}{Lesson: a search is only as good as its model}{}
@@ -716,11 +738,13 @@ still be fair; but it would have to be very accurate to help.
     policy and value network and trains the network on the search's
     decisions; MuZero learns a latent model for planning.
   \item On Pacman, a depth-one search with a safety rule raises the win
-    rate from $96\%$ to about $98\%$, without knowing the ghosts' code;
+    rate by $1$ to $1.5$ points, to about $97.5\%$ on the first set of games
+    and $98\%$ on the second, without knowing the ghosts' code;
     expert iteration transfers part of this gain to the network alone.
   \item On game \code{v2}, where the ghosts are chance rather than an
     opponent, an open-loop MCTS guided by the agent and knowing the ghosts'
     rules wins $82\%$ of the games that the agent alone wins $68\%$ of; with
-    the ghosts' behaviour estimated from their moves, the same search does
-    no better than the agent: the gain was the knowledge of the rules.
+    the ghosts' behaviour estimated from their moves, the same search did
+    no better than the agent on $60$ games: the gain seems to come from the
+    knowledge of the rules (too few games to be sure).
 \end{itemize}

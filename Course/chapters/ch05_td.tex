@@ -493,15 +493,19 @@ biased upwards.
 
 \begin{proposition}{Maximisation bias}{max-bias}
   Let $X_1, \dots, X_m$ be random variables with finite means. Then
-  $\E\left[\max_i X_i\right] \geq \max_i \E[X_i]$, with strict inequality
-  as soon as, with positive probability, the maximum is attained by
-  different indices.
+  $\E\left[\max_i X_i\right] \geq \max_i \E[X_i]$, with equality if and only
+  if some index $j$ attains the maximum almost surely ($X_j = \max_i X_i$
+  with probability $1$). In particular the inequality is strict when two
+  indices are each the unique maximiser with positive probability.
 \end{proposition}
 
 \begin{proof}
   For every $j$, $\max_i X_i \geq X_j$, so $\E[\max_i X_i] \geq \E[X_j]$;
-  take the maximum over $j$. (The function $x \mapsto \max_i x_i$ is
-  convex, and the inequality is an instance of Jensen's inequality.)
+  take the maximum over $j$. Equality for some $j$ means $\E[\max_i X_i -
+  X_j] = 0$ with a nonnegative integrand, that is $\max_i X_i = X_j$ almost
+  surely; conversely, that gives equality. (The function $x \mapsto
+  \max_i x_i$ is convex, and the inequality is an instance of Jensen's
+  inequality.)
 \end{proof}
 
 \begin{intuition}
@@ -517,9 +521,10 @@ If the estimates $Q(s', a')$ are unbiased but noisy, $\max_{a'} Q(s', a')$
 overestimates $\max_{a'} q(s', a')$, and Q-learning propagates the
 overestimation through bootstrapping. \emph{Double Q-learning} (van
 Hasselt, 2010) keeps two estimates: one chooses the best action, the
-other evaluates it, which removes the bias when their errors are
-independent. Its deep version, double DQN, is one of the improvements of
-the DQN agent of the repository (\cref{ch:dqn}).
+other evaluates it, which removes the upward bias when their errors are
+independent (it may slightly underestimate instead). Its deep version,
+double DQN, is one of the improvements of the DQN agent of the repository
+(\cref{ch:dqn}).
 
 \section{Summary}
 
@@ -535,6 +540,6 @@ the DQN agent of the repository (\cref{ch:dqn}).
     but overestimates through the maximisation bias.
   \item On a reduced Pacman game with $5929$ states, both learn an
     optimal behaviour in a few thousand games. The full game, with its
-    $10^{29}$ states, needs generalisation: the subject of the next
+    $10^{32}$ states, needs generalisation: the subject of the next
     chapter.
 \end{itemize}

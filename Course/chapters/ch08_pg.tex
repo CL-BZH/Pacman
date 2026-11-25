@@ -48,12 +48,14 @@ The difficulty is that $\theta$ influences the distribution of the
 trajectories, through the actions, and the dynamics $p$ that also shape it
 are unknown. The policy gradient theorem shows that the gradient
 nevertheless has an expression that can be estimated from trajectories,
-without $p$. We prove it for episodes of bounded length $H$, which covers
-Pacman: a game is aborted after at most $1000$ moves.
+without $p$. We prove it for episodes that end within a bounded number $H$
+of steps under every policy. Pacman's games are \emph{aborted} after $1000$
+moves, which is a truncation, not an end of the game; we come back to it
+after the proof.
 
 \begin{theorem}{Policy gradient theorem}{pg}
-  Suppose every episode ends (or is aborted) within $H$ steps, and $\pi_\theta$
-  is differentiable in $\theta$. Then
+  Suppose every episode ends within $H$ steps, whatever the policy, and
+  $\pi_\theta$ is differentiable in $\theta$. Then
   \begin{equation}
     \label{eq:pg}
     \nabla_\theta J(\theta) = \E_{\pi_\theta}\left[ \sum_{t=0}^{H-1}
@@ -85,14 +87,16 @@ Pacman: a game is aborted after at most $1000$ moves.
   gradient of the logarithm.
 
   \emph{Step 2 (causality).} Write $\psi_t = \nabla_\theta \log
-  \pi_\theta(A_t \mid S_t)$. For $k \leq t$, the reward $R_k$ is determined
-  by the history up to $S_t$, and given that history,
+  \pi_\theta(A_t \mid S_t)$ and $H_t = (S_0, A_0, R_1, \dots, S_t)$ for the
+  history up to $S_t$. For $k \leq t$, the reward $R_k$ is part of $H_t$,
+  and given $H_t$ the action $A_t$ is drawn from $\pi_\theta(\cdot \mid S_t)$:
   \begin{equation*}
-    \E\left[\psi_t \given S_0, \dots, S_t\right] = \sum_a \pi_\theta(a \mid
+    \E\left[\psi_t \given H_t\right] = \sum_a \pi_\theta(a \mid
     S_t)\, \nabla_\theta \log \pi_\theta(a \mid S_t) = \nabla_\theta \sum_a
     \pi_\theta(a \mid S_t) = \nabla_\theta 1 = 0.
   \end{equation*}
-  Hence $\E[R_k \psi_t] = 0$ for $k \leq t$: an action cannot influence the
+  Hence $\E[R_k \psi_t] = \E[R_k\, \E[\psi_t \mid H_t]] = 0$ for
+  $k \leq t$: an action cannot influence the
   rewards received before it. Removing these terms from $G_0 \psi_t$ leaves
   $\sum_{k > t} \gamma^{k-1} R_k\, \psi_t = \gamma^t G_t\, \psi_t$, which
   proves the first equality.
@@ -101,6 +105,18 @@ Pacman: a game is aborted after at most $1000$ moves.
   by the Markov property, $\E[G_t \mid S_0, A_0, \dots, S_t, A_t] =
   q_{\pi_\theta}(S_t, A_t)$. The tower property gives the second equality.
 \end{proof}
+
+\begin{remark}{Aborted games}{pg-truncation}
+  If an episode is cut after $H$ steps without having ended, $G_t$ is a
+  truncated return: its expectation given $(S_t, A_t)$ depends on the time
+  left, $H - t$, which is not part of the state (\cref{rem:truncation}).
+  The first equality of \cref{thm:pg} still holds, for the objective of the
+  truncated episodes, but $q_{\pi_\theta}$ is no longer the conditional
+  expectation of step~3. For Pacman the difference is small: a game is
+  aborted only after $1000$ moves, far beyond the horizon of the discount,
+  and the repository bootstraps the value at an abort, as if the game went
+  on (\cref{rem:truncation}).
+\end{remark}
 
 \begin{intuition}
   The gradient is ``try, then reinforce''. $\nabla_\theta \log
@@ -193,7 +209,9 @@ policy (the \emph{actor}), and uses it to estimate the advantages.
 
 With the critic $V_w$ instead of $v_\pi$, $\delta_t$ is a biased but
 low-variance estimate of the advantage. Monte Carlo advantages $G_t -
-V_w(S_t)$ are unbiased (given a baseline) but noisy; the generalised
+V_w(S_t)$ are not unbiased estimates of $A_\pi$ either (unless $V_w =
+v_\pi$), but the policy gradient they give is unbiased, since $V_w$ acts as
+a baseline (\cref{prop:baseline}); they are noisy. The generalised
 advantage estimator interpolates between the two.
 
 \subsection{Generalised advantage estimation}

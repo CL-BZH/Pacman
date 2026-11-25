@@ -57,16 +57,30 @@ points between agents need thousands of games.
       \bottomrule
     \end{tabular}
   \end{center}
-  The first $1000$ games were a lucky draw for run 1, and choosing run 1
-  \emph{on those games} made them look luckier still: among several
-  agents, the one with the best score on a set of games is likely to be
-  one that was lucky on it.
+  Part of the drop is selection: among several agents, the one with the
+  best score on a set of games is likely to be one that was lucky on it.
+  But the drop is too large for luck and selection alone: $6.2$ points,
+  more than three standard errors of the difference ($1.8$ points), when
+  picking the better of two agents adds only about one point on average.
+  The two evaluations must also have differed in some other way that was
+  not identified (an earlier version of the code, or of the evaluation
+  options). Either way, the score that served to choose an agent cannot
+  also measure it.
 \end{pacman}
 
 \begin{remark}{Lesson: evaluate on many games, and on fresh ones}{lesson-eval}
   Compare agents on thousands of games, and confirm the agent chosen as
-  the best on games that played no part in the choice. From here on, each
-  comparison of this chapter uses games that no earlier decision used.
+  the best on games that played no part in the choice. From here on, the
+  comparisons of this chapter use games that no earlier decision used,
+  with one exception: the search experiments of \cref{sec:mcts-v2} were
+  played on the first games of the set on which run~5's checkpoint was
+  chosen, which favours the agent alone and so understates the search's
+  gain. Each comparison uses one set of games, played by all the agents it
+  compares; the sets differ from one comparison to the next (in the
+  README they are named by their first seed, \code{-{}-seed 1001}, $4001$,
+  $7001$, $10001$, $13001$ and $16001$), so the same agent can score a point
+  or so differently in two tables: only the differences inside a table
+  are paired.
 \end{remark}
 
 \begin{remark}{Lesson: the training curve is not the agent}{lesson-curve}
@@ -92,7 +106,7 @@ move.
   \begin{center}
     \begin{tabular}{@{}lccc@{}}
       \toprule
-      Cookies left & Games lost there & Moves (per game) & Lost per $1000$
+      Cookies left & Lost there & Moves there & Lost per $1000$
         moves \\
       \midrule
       $162$--$121$ & $2.9\%$ & $70$ & $0.41$ \\
@@ -102,9 +116,11 @@ move.
       \bottomrule
     \end{tabular}
   \end{center}
-  Each move is $5$ to $6$ times more dangerous at the end than at the
-  start, and the end is slow: $9.1$ moves per cookie for the last $10$,
-  against $1.7$ for the first $40$.
+  ``Lost there'' is the percentage of the games reaching that stage that
+  are lost in it, and ``Moves there'' the average number of moves spent in
+  it by those games. Each move is $5$ to $6$ times more dangerous at the end
+  than at the start, and the end is slow: $9.1$ moves per cookie for the
+  last $10$, against $1.7$ for the first $40$.
 \end{pacman}
 
 Is the end slow because Pacman cannot find the last cookies, or because he
@@ -259,10 +275,10 @@ on \code{v2} it did not (\cref{sec:v2-fair}).
   A strong but slow player tells whether the agent or the problem is the
   limit, and gives a target. Without it, more training could have been
   spent on a game whose ceiling was already reached; with it, the agent
-  was known to be at least $15$ points short. State what the reference
-  player knows: this one knew the ghosts' rules, which a fair player must
-  estimate, and that turned out to be most of its advantage
-  (\cref{sec:v2-fair}).
+  was known to be about $14$ points short on those games (roughly $2$ to
+  $26$ points at $95\%$, on $100$ games). State what the reference player
+  knows: this one knew the ghosts' rules, which a fair player must
+  estimate, and that may be most of its advantage (\cref{sec:v2-fair}).
 \end{remark}
 
 \begin{remark}{Lesson: check a search against the agent alone}{lesson-check}
@@ -396,8 +412,10 @@ longer schedule ($64.1\%$). When more training, more data and a teacher's
 knowledge all stop at the same place, the limit is likely the agent itself:
 a reflex that maps the last two images to a move, where surviving three
 randomly moving ghosts sometimes needs looking a few moves ahead. The same
-network wins $82\%$ of the games when it can look ahead
-(\cref{pac:mcts-ceiling}).
+network wins $82\%$ of the games when it can look ahead with a search
+that knows the ghosts' rules (\cref{pac:mcts-ceiling}); whether the
+look-ahead or the knowledge of the rules makes the difference is the
+question of \cref{sec:v2-fair}.
 Two directions follow: planning at play time, fairly, with a search that
 estimates the ghosts' behaviour from their moves; or giving the network
 more to work with, a memory (a recurrent network, more images) or a larger
@@ -416,9 +434,13 @@ behaviour.
 
 It stayed there. On the same $60$ games, the run-6 agent won $71.7\%$ alone,
 $66.7\%$ with the fair search and $80.0\%$ with the search knowing the rules
-(\cref{pac:fair-mcts}); an earlier test with another agent gave the same
-answer. Almost all of the search's gain came from knowing the ghosts'
-rules, not from looking ahead.
+(\cref{pac:fair-mcts}); an earlier test with another agent, with the
+slower waves of simulations, pointed the same way. None of these
+differences is significant on $60$ games ($p = 0.66$ for the fair search
+against the agent, $0.15$ against the exact search): the results are
+consistent with the search's gain coming from knowing the ghosts' rules
+rather than from looking ahead, but do not establish it. By the rule
+fixed beforehand, the learnt model was set aside.
 
 But the argument behind the rule was wrong. A measurement of the model
 itself, rather than of the search, showed that its form is not the ghosts'
@@ -429,11 +451,15 @@ so the question of a fair planner stays open; what the experiment does show
 is that the planner's model must be very accurate.
 
 The measurement itself went wrong once. The search had been made twice as
-fast by running its simulations in waves (\cref{sec:mcts-v2}); a control
-run with the same code as the fair search disagreed with the first
-measurement made with the slower code, and the disagreement came from the
-implementation. The question was then asked again, one simulation at a
-time, on a machine with more cores.
+fast by running its simulations in waves (\cref{sec:mcts-v2}). The exact
+search of the first, slower implementation had won $64$ of $75$ games; a
+control with the faster code that ran the fair search, the exact model
+again, won $56$ of the same $75$. That difference of about $10$ points
+(not significant by itself: $16$ against $8$ disagreements) came from the
+implementation, not from the ghost model, and comparing the fair search
+with the first implementation would have credited it to the model. The
+question was then asked again, one simulation at a time, on a machine with
+more cores.
 
 \begin{pacman}{Four frames}{four-frames}
   The second direction, more for the network to see, was tried with the
@@ -472,8 +498,9 @@ time, on a machine with more cores.
       \bottomrule
     \end{tabular}
   \end{center}
-  The rise of $5$ points over the last $3$ million steps, as the learning
-  rate reached its minimum, is larger than the difference being measured.
+  The rise of $5.4$ points over the last $3$ million steps, as the learning
+  rate reached its minimum, is about as large as the difference being
+  measured ($5.8$ points).
   Continued for $20$ million more steps at that learning rate, run~9 won
   $66.1\%$ (after $10$ million) and $64.2\%$ (after $20$ million): it had
   reached the plateau, and stays there. A second frame is not needed; that
@@ -507,7 +534,10 @@ time, on a machine with more cores.
   Deciding beforehand what result would stop a line of work (here: a fair
   search near the agent's level) lets the result decide, instead of being
   read to fit a plan. It also tells how precise the measurement must be:
-  enough to tell $70\%$ from $80\%$, not more. But the rule is only as good
+  enough to tell $70\%$ from $80\%$. That needs about $160$ games played by
+  both players; the $60$ that one Kaggle session allowed were too few, and
+  the rule was applied on weaker evidence than it asked for. And the rule
+  is only as good
   as the reasoning behind it: check the assumptions (here, that the
   estimated model had the right form) by measuring them directly.
 \end{remark}
@@ -516,10 +546,12 @@ time, on a machine with more cores.
   {lesson-control}
   Two measurements made with two versions of the code differ by the
   question \emph{and} by the code. A control (the old question with the new
-  code) separates the two; without it, a $10$-point effect of the
-  implementation was nearly reported as an effect of the ghost model. And
-  decide on the complete set of games: a difference that looked clear on
-  $50$ games shrank on the next $20$.
+  code) separates the two; without it, a difference of about $10$ points
+  between two implementations ($64$ against $56$ of the same $75$ games) was
+  nearly reported as an effect of the ghost model. And decide on the
+  complete set of games: one simulation at a time against waves, $42$
+  against $34$ on the first $50$ games, became $57$ against $52$ once $20$
+  more were played (not significant, $p = 0.44$).
 \end{remark}
 
 \section{Do all the agents play alike?}
@@ -565,35 +597,44 @@ the same places gives $r = 1$.
   Is $0.7$ a high correlation? Two maps of the \emph{same} agent, made from
   two halves of its games (the even and the odd games), are not identical
   either: each is a finite sample. Their correlation, the \emph{split-half}
-  correlation, is the most that the noise allows. A map made from all the
-  games is less noisy than one made from half of them, so the reference for
-  the full maps is a little higher than the split-half value.
+  correlation $r$, is what the noise alone gives on average. A map made
+  from all the games is less noisy than one made from half of them; the
+  Spearman--Brown formula $2r / (1 + r)$ estimates the correlation that two
+  full-size maps of the same agent would have, the reference for the full
+  maps.
 \end{remark}
 
 \begin{center}
-  \begin{tabular}{@{}lcc@{}}
+  \begin{tabular}{@{}lccc@{}}
     \toprule
-    & Between two agents & Same agent, two halves \\
+    & Between two agents & Same agent, halves & Reference \\
     \midrule
-    Last $10$ cookies & $0.90$ to $0.97$ & $0.96$ to $0.98$ \\
-    Where caught & $0.62$ to $0.78$ & $0.57$ to $0.86$ \\
+    Last $10$ cookies & $0.90$ to $0.97$ & $0.96$ to $0.98$
+      & $0.98$ to $0.99$ \\
+    Where caught & $0.62$ to $0.78$ & $0.57$ to $0.86$
+      & $0.73$ to $0.92$ \\
     \bottomrule
   \end{tabular}
 \end{center}
 
-The maps of the last cookies are almost as alike between agents as between
-two halves of the games of one agent: all the agents eat the maze in the
-same order and leave the same cookies for the end, those of the four small
-dead ends, where Pacman has a single way out. The maps of the catches,
-made from $300$ to $450$ lost games each, are noisier, and their differences
-between agents are mostly within that noise.
+The maps of the last cookies are almost as alike between agents as the
+reference allows: all the agents eat the maze in the same order and leave
+the same cookies for the end, those of four short corridors under wall
+blocks, two at the top and two at the bottom (the maze has no dead end:
+each of these corridors joins two junctions). The maps of the catches,
+made from $300$ to $450$ lost games each, are noisier, and between agents
+they are mostly a little below the reference: the agents are caught in
+broadly the same places, with some differences between them (the two
+spots beside the ghost house for runs 4 and 7, for example).
 
 Do the agents also lose the same games? The question needs a reference too.
 
 \begin{proposition}{Common losses of independent agents}{common-losses}
-  Two agents play the same $n$ games and lose each game with probabilities
-  $q_A$ and $q_B$. If their losses are independent, the expected number of
-  games lost by both is $n q_A q_B$, and by all of $m$ agents
+  Two agents play the same $n$ games and lose \emph{every} game with the
+  same probabilities $q_A$ and $q_B$ (no game is harder than another). If
+  their losses are independent, the expected number of games lost by both
+  is $n q_A q_B$, and, if the losses of $m$ agents are mutually
+  independent, the expected number lost by all of them is
   $n \prod_{k=1}^m q_k$ (the same with the win probabilities for the games
   won by all).
 \end{proposition}
@@ -604,11 +645,20 @@ Do the agents also lose the same games? The question needs a reference too.
   $n$ games (linearity of expectation). The same holds for $m$ agents.
 \end{proof}
 
+The comparison therefore tests two hypotheses at once. If some games were
+harder than others for every agent, with loss probabilities $q_{A,i}$ and
+$q_{B,i}$ on game $i$, the expected count would be $\sum_i q_{A,i}\,
+q_{B,i}$, larger than $n \bar q_A \bar q_B$: an excess of common losses
+points to hard games (or to agents whose mistakes are linked).
+
 With the observed loss rates as estimates of the $q_k$: run~6 and the expert
 agent lose $101$ games in common, $99$ expected; over the ten pairs of
-agents, the observed numbers are within about $15$ of the expected ones.
-$104$ games are won by all five agents ($104$ expected) and $12$ are lost by
-all five ($6$ expected). There are almost no ``hard games'': a seed does not
+agents, the observed numbers are within about $15$ of the expected ones,
+for a standard deviation of each count of $9$ to $12$. $104$ games are won
+by all five agents ($104$ expected) and $12$ are lost by all five ($6$
+expected): a small excess of about $6$ games in $1000$, which independence
+would give with probability about $0.02$. There are almost no ``hard
+games'': a seed does not
 fix a game, since the ghosts' random draws follow different courses as soon
 as two agents play differently. The losses come from situations that arise
 during the game.
@@ -616,7 +666,7 @@ during the game.
 \begin{pacman}{One strategy}{one-strategy}
   However they were trained, the agents learnt the same strategy and differ
   in how reliably they carry it out. That strategy leaves for the end the
-  cells where the end game is most dangerous, the dead ends. No change of
+  same four short corridors. No change of
   training tried so far changed the strategy itself.
 \end{pacman}
 
@@ -642,10 +692,12 @@ part in its choice (the agent with the search on $100$ games):
   \end{tabular}
 \end{center}
 
-Most of the progress came from understanding the problem, not from more
-training: run 2's $35$ million extra steps brought nothing, while the
-diagnosis of the losses and a second look at the rewards brought $15$
-points. The methods, in the order they were needed:
+From $50\%$ to $65\%$, the progress came from understanding the problem
+and from training longer. Run 2's $35$ million extra steps brought
+nothing; at the same budget, the diagnosis of the losses (late starts,
+about $4$ points) and a second look at the rewards (about $2$ points)
+brought about $6$ points; most of the rest came from longer training at a
+small learning rate (runs 4 to 6). The methods, in the order they were needed:
 \begin{enumerate}
   \item \textbf{Measure precisely}: thousands of games, standard errors
     (\cref{prop:win-rate-error}), and the agents compared game by game
@@ -668,7 +720,7 @@ points. The methods, in the order they were needed:
   \item \textbf{Know what can be learnt}: a search's skill can be distilled
     into a network only as far as it is knowledge rather than computation,
     and its targets only as far as they are consistent.
-  \item \textbf{Recognise a plateau}: when several independent routes stop
+  \item \textbf{Recognise a plateau}: when several different routes stop
     at the same level, look at the agent's design, not at more training.
   \item \textbf{Measure fairly}: credit a search only with what a fair
     player could know; with the ghosts' rules estimated, the search's gain

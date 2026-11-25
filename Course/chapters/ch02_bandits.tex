@@ -279,8 +279,11 @@ a small probability $\delta$ of being wrong and solve $e^{-2 n c^2} =
 With probability at least $1 - \delta$, the true mean is below $\bar X_n +
 c$: this is an \emph{upper confidence bound} on $\mu$. For example, with
 $\delta = 0.05$ and $n = 100$ rewards, $c = \sqrt{\ln 20 / 200} \approx
-0.12$: after $100$ rewards with average $0.6$, the true mean is below $0.72$
-with probability at least $95\%$.
+0.122$: after $100$ rewards with average $0.6$, $0.6 + 0.122 \approx 0.72$ is
+a $95\%$ upper confidence bound. The $95\%$ is a property of the
+procedure, not of this one result: once the average is observed, $\mu$ is
+either below $0.72$ or not; the procedure gives a bound above $\mu$ in at
+least $95\%$ of the samples.
 
 \begin{intuition}
   A sample mean rarely strays far from the true mean, and the probability
@@ -534,7 +537,9 @@ handled by considering all their possible values.
   confidence: to be wrong with probability about $1/T$ only, the bars must
   be widened by $\sqrt{\ln T}$. Close arms are played often but each play
   costs little; the regret of arm $a$ is $\ln T / \Delta_a$, large only when
-  the gap is small, and it never exceeds the trivial bound $\Delta_a T$.
+  the gap is small. The true regret of arm $a$ also never exceeds
+  $\Delta_a T$, so the logarithmic bound says something only when $\Delta_a$
+  is at least of order $\sqrt{\ln T / T}$.
 \end{intuition}
 
 \subsection{Can any algorithm do better?}
@@ -629,7 +634,10 @@ in $T = 10^6$ rounds. The bound of \cref{thm:ucb-regret} for UCB1 is $8 \ln
 T / \Delta_a^2 = 800 \ln T$, sixteen times more. The order of growth is the
 same, but the constants differ. Since $\mathrm{kl}(x, y) \geq 2 (x - y)^2$
 (Pinsker's inequality), the lower bound is at most $\ln T / (2
-\Delta_a^2)$: like UCB1, it is of order $\ln T / \Delta_a^2$. Algorithms
+\Delta_a^2)$; and since $\mathrm{kl}(x, y) \leq (x - y)^2 / (y (1 - y))$ (the
+$\chi^2$ bound), it is at least $\mu^\star (1 - \mu^\star) \ln T /
+\Delta_a^2$: for means away from $0$ and $1$, like UCB1, it is of order
+$\ln T / \Delta_a^2$. Algorithms
 that reach the constant $1/\mathrm{KL}$ exist: KL-UCB, which replaces the
 Hoeffding bonus by a confidence bound built from $\mathrm{kl}$, and
 Thompson sampling, the next algorithm.
@@ -699,7 +707,7 @@ error exponentially unlikely in the evidence, $e^{-\text{evidence}} \approx
   hypothesis than under the other: $e^{n\, \mathrm{KL}} \approx T$, that
   is, $n\, \mathrm{KL} \approx \ln T$, hence $n \approx \ln T /
   \mathrm{KL}$ plays. In the example, $\mathrm{KL} \approx 0.020$ and $\ln
-  T \approx 13.8$ for $T = 10^6$: about $690$ plays. Arms whose rewards look
+  T \approx 13.8$ for $T = 10^6$: about $680$ plays. Arms whose rewards look
   alike (small $\mathrm{KL}$) are hard to rule out. This count is
   \emph{per suboptimal arm}, each with its own $\mathrm{KL}$: in total the
   suboptimal arms are played about $\sum_a \ln T / \mathrm{KL}(\nu_a \,\|\,
@@ -802,7 +810,7 @@ In the algorithm, $\mathrm{Beta}(1 + S_a, 1 + F_a)$ is the posterior of
 arm $a$ (\cref{prop:beta-posterior}), and updating it only requires
 counting successes and failures. Thompson sampling attains the
 Lai--Robbins bound for Bernoulli bandits (Kaufmann, Korda and Munos, 2012;
-Agrawal and Goyal, 2012), and it is often the best performer in practice.
+Agrawal and Goyal, 2013), and it is often the best performer in practice.
 
 \paragraph{Where is the likelihood used?} In the update of the posterior.
 By Bayes' rule, each new reward $r$ of arm $a$ multiplies the posterior of

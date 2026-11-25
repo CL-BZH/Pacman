@@ -362,8 +362,13 @@ transitions by planning with a learnt model.
 
 \begin{pacman}{Network and training}{dqn-repo}
   \begin{itemize}[nosep]
-    \item \textbf{Input:} the feature planes of the last two images
-      ($14 \times 9 \times 13$, \cref{sec:observation}).
+    \item \textbf{Input:} the last two four-channel colour images of
+      the board ($8 \times 9 \times 13$; the fourth channel holds the
+      power on the ghosts' cells, \cref{pac:missing-power}), not the
+      feature planes, which only the actor-critic agent uses. In these
+      images both ghosts have the same colour, although their
+      aggressiveness differs, and a ghost hides the cookie under it: the
+      DQN agent does not receive a complete state.
     \item \textbf{Network} (\code{DuelingCNN}): three $3 \times 3$
       convolutions with $32$, $64$ and $32$ channels, stride $1$ and
       padding $1$, a fully connected layer of $256$ units, and the two
@@ -375,8 +380,9 @@ transitions by planning with a learnt model.
       the network chooses the actions of the $16$ games in a single batched
       forward pass, and performs one gradient step on a mini-batch of $128$
       transitions from a memory of $300\,000$. Double DQN, $3$-step targets,
-      Huber loss, $\tau = 0.005$, learning rate decreasing from $2.5 \times
-      10^{-4}$ to $5 \times 10^{-5}$.
+      Huber loss, $\tau = 0.005$, learning rate decreasing from $10^{-4}$
+      to $2.5 \times 10^{-5}$ (run 3 below; $2.5 \times 10^{-4}$ made the
+      training collapse).
   \end{itemize}
 \end{pacman}
 
@@ -421,9 +427,9 @@ with torch.no_grad():                      # Polyak averaging
 \end{remark}
 
 \begin{pacman}{Results on game \code{v1}}{dqn-results}
-  The agent was trained on a Kaggle GPU (\cref{fig:dqn-training}), always
-  with $\varepsilon$ decreasing from $1$ to $0.02$ over the first $15$
-  million steps.
+  The agent was trained on a Kaggle GPU (\cref{fig:dqn-training}). The
+  runs started from scratch (runs 1 and 3) had $\varepsilon$ decreasing
+  from $1$ to $0.02$ over the first $15$ million steps.
 
   \emph{Run 1} ($60$ million steps) used a learning rate decreasing
   linearly from $2.5 \times 10^{-4}$ to $5 \times 10^{-5}$. The reward
@@ -436,7 +442,7 @@ with torch.no_grad():                      # Polyak averaging
 
   \emph{Run 3} started again from scratch with exactly the same settings
   as run 1, except a learning rate decreasing from $10^{-4}$ to $2.5 \times
-  10^{-5}$. At the same moment where run 1 collapsed, as $\varepsilon$
+  10^{-5}$. At the moment when run 1 collapsed, as $\varepsilon$
   went from $0.2$ to $0.02$ between $12$ and $15$ million steps, run 3
   \emph{took off}: from $1\%$ to $40\%$ of games won in $3$ million steps,
   then $56\%$ after $40$ million steps and about $65\%$ after $60$
@@ -468,11 +474,15 @@ with torch.no_grad():                      # Polyak averaging
   continuing it.
 
   The A2C/PPO agent of \cref{ch:ppo} wins $96.6\%$ of the games after
-  about $20$ million steps. Two lessons: for DQN the learning rate decided
-  whether the agent learnt at all, and in a game where one mistake ends
-  everything, an on-policy actor-critic, which learns from the agent's
-  current behaviour, did much better than learning from a replay memory in
-  which the rare fatal transitions are a tiny fraction.
+  $40$ million steps. One lesson is clear: for DQN the learning rate
+  decided whether the agent learnt at all. A second is only a hypothesis:
+  in a game where one mistake ends everything, an on-policy actor-critic,
+  which learns from the agent's current behaviour, may do better than
+  learning from a replay memory in which the rare fatal transitions are a
+  tiny fraction. The two agents differ in too many ways to tell: the input
+  (colour images in which the ghosts look alike, against feature planes),
+  the mirror-symmetric network, the curriculum, the entropy bonus and the
+  training length.
 \end{pacman}
 
 \begin{figure}[ht]

@@ -248,7 +248,7 @@ checkpoint.
 On 1000 games (`python pacman_play.py -a dqn -n 1000`) it wins **67.2%** of the games. Once both
 ghosts are eaten, `pacman_play.py` lets the DQN agent play a random move with probability 0.05
 (`--greedy` to disable): played fully greedily, it sometimes goes round in circles in an area
-already cleared and wins 66.1%. The A2C/PPO agent wins 96.6% of the games after about 20M steps.
+already cleared and wins 66.1%. The A2C/PPO agent wins 96.6% of the games after 40M steps.
 
 Run 4 fine-tuned run 3 for 35M more steps (learning rate 2.5e-5, epsilon fixed at 0.02) and did
 not improve it. A checkpoint holds only the network: the replay memory starts empty and Adam's
@@ -421,8 +421,10 @@ made the sampled policy better without improving its best action.
 
 On 3000 games, the standard error of a win rate is about 0.9 points, and that of the difference
 between two agents about 1.3 points. A first comparison on 1000 games (`--seed 1`) gave 56.3% to
-run 1 and 52.8% to run 2, and run 1 was chosen on these same games: a lucky set of games, made
-luckier by the choice. Agents that are a few points apart must be compared on several thousand
+run 1 and 52.8% to run 2, and run 1 was chosen on these same games. Part of run 1's drop to 50.1%
+is selection (the best of several agents on a set of games is likely to have been lucky on it),
+but 6.2 points is more than three standard errors of the difference, more than luck and selection
+explain: the two evaluations must also have differed in some way that was not identified. Agents that are a few points apart must be compared on several thousand
 games, and on games that were not used to choose between them.
 
 #### Where the games are lost
@@ -451,8 +453,9 @@ The ghosts leave the house by the door above it, into the corridor just above th
 clears the bottom of the maze first and leaves the top corners for the end, and to reach them he
 has to cross the junctions of that corridor, where most of the games are lost.
 
-The look-ahead search does not help: on 60 games, `--search 20` wins 53.3% of them and the agent
-alone 54.2% (the search changes 2.9% of the moves). Expert iteration, which needs the search to find
+The look-ahead search does not help: on 60 games, `--search 20` and the agent alone win about 53%
+of them (53.3% and 54.2% as logged; the second figure is not a count out of 60, so a game was
+probably not counted), and the search changes 2.9% of the moves. Expert iteration, which needs the search to find
 better moves than the agent, is therefore not a way forward on `v2` as it was on `v1` with this
 short search; a Monte Carlo tree search does find better moves (see
 [Monte Carlo tree search](#monte-carlo-tree-search) below).
@@ -537,7 +540,7 @@ On the same 100 games (`--seed 4001`), with 100 simulations per searched move:
 | run 5 (15M) with MCTS | **82%** |
 
 The search wins 26 games that the agent loses and loses 12 that the agent wins: if the two players
-were equally strong, a split at least this lopsided would have a probability of about 0.017 (sign
+were equally strong, a split at least this lopsided would have a probability of about 0.034 (sign
 test). The search moves the ghosts with the game's own code: it knows their rules exactly (each
 ghost's aggressiveness, the shortest-path chase), though not the random draws of the real game. A
 fair player would have to estimate these rules by watching the ghosts, as the `estimated` model of
@@ -656,11 +659,16 @@ about 18 minutes per game):
 | run 6 with MCTS, estimated ghosts | 66.7% |
 | run 6 with MCTS, exact ghosts | 80.0% |
 
-The fair search wins 9 games that the agent loses and loses 12 that the agent wins: it does not
-help. An earlier run (run 5, waves of 16, 100 games) gave the same answer, 17 against 14 (71%
-against 68%). The exact search wins 16 games that the fair search loses, and loses 8.
+The fair search wins 9 games that the agent loses and loses 12 that the agent wins (p = 0.66): it
+does not help. An earlier run (run 5, waves of 16, 100 games) pointed the same way, 17 against 14
+(71% against 68%). The exact search wins 16 games that the fair search loses and loses 8
+(p = 0.15), and against the agent alone 16 against 11 (p = 0.44). Sixty games are too few to
+separate these players (the standard error of a paired difference is about 8 points; telling 70%
+from 80% needs about 160 games).
 
-So almost all of what the search added came from knowing the ghosts' rules, not from looking ahead.
+So the results are consistent with the search's gain coming from knowing the ghosts' rules rather
+than from looking ahead (the exact search's gain over the agent was significant on the 100 games
+above), but they do not establish it.
 Within one game, the estimates rest on few observed moves, and the generic model's chase differs from
 the real ghosts' in the close encounters that decide a game; a search that trusts a wrong model
 overrides good moves of the network.
@@ -723,7 +731,7 @@ caught. When Pacman loses, a copy of his game taken 5 to 20 moves before (drawn 
 (at most 2000 copies, each used at most 4 times), and a new game starts from one of these copies
 with probability `death_start_prob`; the ghosts draw new random moves each time, so Pacman meets the
 same trap with different outcomes. It is a form of prioritised replay of the starting states, as
-Prioritized Level Replay replays the levels where the agent does worst. Copying a game costs 7
+Prioritized Level Replay replays the levels with the largest value errors. Copying a game costs 7
 microseconds, so the last 20 positions of every game are kept.
 
 Run 8 repeats run 6 (100 million steps, 21 hours on Kaggle) with `DEATH_START_PROB = 0.2` and
@@ -769,8 +777,9 @@ split-half correlations give the highest value that the noise allows:
 (A map made from 1000 games is less noisy than one made from 500, so the reference for the full maps
 is a little higher than the split-half value.) The maps of the last cookies are almost as alike
 between agents as between two halves of one agent's games: all the agents eat the maze in the same
-order and leave the same cookies for the end, those of the four small dead ends (two at the top, two
-at the bottom), where Pacman has a single way out. The maps of the catches are noisier (each comes
+order and leave the same cookies for the end, those of four short corridors under wall blocks (two
+at the top, two at the bottom; the maze has no dead end, each corridor joins two junctions). The
+maps of the catches are noisier (each comes
 from 300 to 450 lost games), and their differences between agents are mostly within that noise.
 
 Which games are lost is another question. If the losses of two agents were independent, the number
@@ -793,11 +802,13 @@ tells the story in detail.
 
 1. **Evaluate on many games, and on games that were not used to decide.** With 1000 games the
    standard error of a win rate is 1.6 points (2.2 for a difference); with 3000, 0.9 (1.3). Run 1
-   was chosen over run 2 on 1000 games where it won 56.3%; on 3000 new games it won 50.1%. Each
-   comparison now uses fresh games, and the best of several agents is confirmed on others.
+   was chosen over run 2 on 1000 games where it won 56.3%; on 3000 new games it won 50.1%. Most
+   comparisons then used fresh games, and the best of several agents was confirmed on others.
 2. **Compare agents on the same games, game by game.** Only the games where they disagree carry
-   information (sign test): this is how the MCTS's 82% against 68% on 100 games is significant,
-   and how expert iteration's +1.3 points on 3000 games is not.
+   information, and the sign test on them is exact: the MCTS's 82% against 68% on 100 games is
+   significant (p = 0.034), expert iteration's +1.3 points on 3000 games is not. Pairing is never
+   less precise than comparing different games, and much more precise when some games are hard for
+   both players; on Pacman the gain is small, since a seed does not fix a game.
 3. **The training curve is not the agent.** It shows the games played with sampled actions. Run 2
    rose in training and not in evaluation; run 5 stayed flat in training while its best action kept
    improving (60.0% to 64.5%); at the end of run 6, a falling entropy alone kept lifting the curve.
@@ -807,7 +818,8 @@ tells the story in detail.
    which suggested the late starts.
 5. **Watch the agent play, and read the rewards it is given.** Pacman hunting ghosts with his power
    was not a mistake of the agent but what the rewards of `v1` asked for in a game where the ghosts
-   come back. Fixing them was worth more than any amount of training (run 4).
+   come back. Fixing them was worth about 2 points at the same training budget (run 4 against
+   run 3 at 50 million steps); run 2's 35 million extra steps had brought nothing.
 6. **Prefer changes that do not encode the answer.** The late starts (exploring starts: practise
    the states where the agent's own games are lost) were preferred to a reward for the cookies of
    the top corners, which would have worked on this maze only.

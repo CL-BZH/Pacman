@@ -382,17 +382,18 @@ DP needs two things that are missing in practice.
 \begin{pacman}{How many states?}{n-states}
   In game \code{v1}, a state specifies Pacman's cell ($77$ choices), the
   cell of each ghost or the fact that it was eaten ($78$ choices each),
-  which of the $77$ cells still hold a cookie (at most $2^{77}$ choices),
-  and the power credit ($13$ values). This gives at most
+  which of the $77$ cells still hold a cookie or one of the two power
+  cookies ($\sum_{j \le 2} \binom{77}{j} 2^{77 - j} = 771 \times 2^{77}$
+  choices), and the power credit ($13$ values). This gives at most
   \begin{equation*}
-    77 \times 78^2 \times 2^{77} \times 13 \approx 9 \times 10^{29}
+    77 \times 78^2 \times 771 \times 2^{77} \times 13 \approx 7 \times 10^{32}
   \end{equation*}
   states. Most of these configurations cannot occur, but even a tiny
   fraction of them is far beyond what a table can store: at one byte per
   state, $10^{20}$ states would already require $100$ exabytes.
 \end{pacman}
 
-The two reduced games of this chapter illustrate the jump: one ghost and no
+The reduced game of this chapter illustrates the jump: one ghost and no
 cookies give $5929$ states, solved in seconds; adding the cookies
 multiplies the number of states by up to $2^{77}$. The way out, developed in
 the rest of the course, is twofold: \emph{learn from sampled experience}

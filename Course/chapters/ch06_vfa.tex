@@ -161,8 +161,9 @@ generally \emph{not} the minimiser of $\overline{\mathrm{VE}}$.
   Positive definiteness of $A$ means that, on average, the update always
   points towards the TD fixed point, like a ball rolling into a bowl. It
   depends on the states being weighted as the policy visits them: then a
-  state whose value is overestimated is also visited as a \emph{next}
-  state often enough for the overestimate to be corrected.
+  state that often serves as a \emph{next} state, and so feeds its error
+  into many targets, is also updated often enough for that error to be
+  corrected.
 \end{intuition}
 
 The stochastic algorithm \eqref{eq:linear-td}, with decreasing step sizes,

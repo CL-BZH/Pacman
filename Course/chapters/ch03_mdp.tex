@@ -115,8 +115,9 @@ handled by the same equations.
 \begin{pacman}{What if the image did not show the power?}{missing-power}
   Consider two boards that look exactly the same, a ghost next to Pacman,
   with one move of power left in the first and ten in the second. In the
-  second, eating the ghost is a good move; in the first, the ghost turns
-  dangerous at the next move and chasing it can be fatal. Same picture,
+  second, eating the ghost is a good move; in the first, moving onto the
+  ghost is already fatal, since the power ends with that move
+  (\cref{sec:game}). Same picture,
   different futures: an image that did not show the remaining power would
   not be a state, and an agent that received it would be solving a POMDP
   without knowing it. Stacking frames would not repair this: two frames
@@ -577,8 +578,9 @@ The discounted return is not the only possible objective.
     Bellman optimality operator, a $\gamma$-contraction; any greedy policy
     with respect to $v_\star$ (or $q_\star$) is optimal.
   \item For Pacman, the state is the board configuration; the feature
-    planes of game \code{v1} contain it entirely, while game \code{v2} is
-    partially observable.
+    planes of game \code{v1} contain it entirely; game \code{v2} needs two
+    stacked frames for the ghosts' directions (an early version, with a
+    hidden respawn timer, was partially observable).
 \end{itemize}
 The next chapters turn these equations into algorithms: first when $p$ is
 known (dynamic programming), then when it must be replaced by experience.
