@@ -177,7 +177,7 @@ the episode, or only the first one followed by an estimate. Between them,
 \end{definition}
 
 \begin{proposition}{Error reduction of $n$-step returns}{nstep-error}
-  For a fixed estimate $V$,
+  For a fixed estimate $V$ with $V = 0$ at the terminal states,
   \begin{equation}
     \max_s \abs{\E_\pi\left[G_{t:t+n} \given S_t = s\right] - v_\pi(s)}
     \leq \gamma^n \max_s \abs{V(s) - v_\pi(s)}.
@@ -209,7 +209,10 @@ with geometric weights,
   G_t^\lambda = (1 - \lambda) \sum_{n=1}^{\infty} \lambda^{n-1}
   G_{t:t+n}, \qquad \lambda \in [0, 1],
 \end{equation}
-with $G_t^0 = G_{t:t+1}$ (TD(0)) and $G_t^1 = G_t$ (Monte Carlo). We will
+with $G_t^0 = G_{t:t+1}$ (TD(0)). In an episode ending at $T$, $G_{t:t+n} =
+G_t$ for $n \geq T - t$, and the sum becomes $(1 - \lambda) \sum_{n=1}^{T -
+t - 1} \lambda^{n-1} G_{t:t+n} + \lambda^{T - t - 1} G_t$, which gives
+$G_t^1 = G_t$ (Monte Carlo). We will
 meet it again as the generalised advantage estimator of \cref{ch:pg}.
 
 \begin{lemma}{The $\lambda$-return error is a sum of TD errors}{lambda-td}
@@ -294,10 +297,12 @@ track of these weights.
 \end{intuition}
 
 With online updates the equivalence is only approximate; the \emph{true
-online} TD($\lambda$) of van Seijen and Sutton (2014) makes it exact. Traces
-cost one memory cell per state (or per feature with function
-approximation, where $\mathbf{e} \gets \gamma \lambda \mathbf{e} +
-\nabla \hat v(S_t)$), and give the benefits of $\lambda$-returns without
+online} TD($\lambda$) of van Seijen and Sutton (2014) makes it exactly
+equivalent to the \emph{online} $\lambda$-return algorithm (with truncated
+$\lambda$-returns). Traces cost one memory cell per state (or per feature
+with function approximation, \cref{ch:vfa}, where $\mathbf{e} \gets
+\gamma \lambda \mathbf{e} + \nabla_{\mathbf{w}} \hat v(S_t;
+\mathbf{w})$), and give the benefits of $\lambda$-returns without
 waiting for the end of the episode.
 
 \begin{pacman}{$n$-step returns in the repository}{nstep-repo}

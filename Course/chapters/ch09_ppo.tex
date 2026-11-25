@@ -128,9 +128,9 @@ not. How large may the step be?
   \begin{equation}
     \label{eq:trpo-bound}
     J(\pi') \geq L_\pi(\pi') - C\, \mathrm{KL}^{\max}(\pi, \pi'), \qquad
-    C = \frac{4 \epsilon \gamma}{(1 - \gamma)^2},
+    C = \frac{4 \epsilon_A \gamma}{(1 - \gamma)^2},
   \end{equation}
-  where $\epsilon = \max_{s, a} \abs{A_\pi(s, a)}$ and
+  where $\epsilon_A = \max_{s, a} \abs{A_\pi(s, a)}$ and
   $\mathrm{KL}^{\max}(\pi, \pi') = \max_s \mathrm{KL}(\pi(\cdot \mid s)
   \,\|\, \pi'(\cdot \mid s))$.
 \end{theorem}
@@ -195,7 +195,7 @@ and expensive; PPO obtains a similar effect with a first-order method.
   where $\rho = \pi_\theta(a \mid s) / \pi_{\theta_{\mathrm{old}}}(a \mid
   s)$ and $\hat A$ is the (normalised GAE) advantage computed with the
   policy that played the batch. PPO maximises the average of
-  $\ell^{\mathrm{CLIP}}$ over the batch.
+  $\ell^{\mathrm{CLIP}}$ over a batch of $B$ samples $(s_i, a_i, \hat A_i)$.
 \end{definition}
 
 \begin{proposition}{Properties of the clipped objective}{clip-props}
@@ -209,7 +209,7 @@ and expensive; PPO obtains a similar effect with a first-order method.
       $\rho < 1 - \epsilon$, then $\ell^{\mathrm{CLIP}}$ is constant in
       $\rho$ near $\rho$: the sample no longer contributes to the gradient;
     \item at $\theta = \theta_{\mathrm{old}}$, the gradient of the average
-      of $\ell^{\mathrm{CLIP}}$ is the A2C policy gradient $\frac{1}{N}
+      of $\ell^{\mathrm{CLIP}}$ is the A2C policy gradient $\frac{1}{B}
       \sum_i \hat A_i \nabla_\theta \log \pi_\theta(a_i \mid s_i)$.
   \end{enumerate}
 \end{proposition}
@@ -225,8 +225,8 @@ and expensive; PPO obtains a similar effect with a first-order method.
   minimum is the constant $(1 - \epsilon)\hat A$. (iv) At $\theta =
   \theta_{\mathrm{old}}$ every $\rho_i = 1$, in the interior of the
   clipping interval, so by (ii) the objective coincides near $\theta_{\mathrm
-  {old}}$ with $\frac{1}{N} \sum_i \rho_i \hat A_i$, whose gradient there
-  is $\frac{1}{N} \sum_i \hat A_i \nabla_\theta \log \pi_\theta(a_i \mid
+  {old}}$ with $\frac{1}{B} \sum_i \rho_i \hat A_i$, whose gradient there
+  is $\frac{1}{B} \sum_i \hat A_i \nabla_\theta \log \pi_\theta(a_i \mid
   s_i)$, as in the proof of \cref{prop:first-order}.
 \end{proof}
 

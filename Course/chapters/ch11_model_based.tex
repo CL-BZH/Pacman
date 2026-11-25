@@ -130,13 +130,16 @@ $\hat q(s, a)$.
   leaves $v_\pi$ unchanged, so $\E[\hat G] = \E[R_1 + \gamma v_\pi(S_1)
   \mid s, a] = q_\pi(s, a)$. The variance of a mean of $N$ independent
   copies is the variance divided by $N$. The last claim is the policy
-  improvement theorem (\cref{cor:greedy-improvement}) applied in the single
-  state $s$.
+  improvement theorem (\cref{thm:pi-improvement}) applied to the policy
+  that plays the maximising action in $s$ and follows $\pi$ elsewhere.
 \end{proof}
 
 In the repository the rollout policy is the trained agent itself (greedy
 moves), and $V$ its value head; the rollouts therefore estimate what
-happens if the agent plays $a$ and then goes on as usual.
+happens if the agent plays $a$ and then goes on as usual. The value head
+estimates the value of the stochastic PPO policy, not of its greedy
+version, so the hypothesis $V = v_\pi$ holds only approximately; the
+difference is small when the policy is nearly deterministic.
 
 \paragraph{Common random numbers.} The moves of the ghosts are random. To
 compare two candidate moves, the $k$-th simulation of each move uses the
@@ -158,8 +161,8 @@ less noisy than each of them.
   which Pacman dies.
   \begin{itemize}[nosep]
     \item \emph{Value mode:} play $\argmax_{a \in M} \hat q(a)$.
-    \item \emph{Safety mode:} keep $a_0$ unless $\hat d(a_0) - \min_a \hat
-      d(a) \geq \kappa$; otherwise play, among the moves of minimal death
+    \item \emph{Safety mode:} if $\hat d(a_0) - \min_a \hat d(a) <
+      \kappa$, keep $a_0$; otherwise play, among the moves of minimal death
       rate, the one of best average score. The repository uses $\kappa =
       0.15$.
   \end{itemize}
@@ -313,9 +316,10 @@ the next searches better, and so on.
 
 MuZero (Schrittwieser et al., 2020) plans without knowing the rules. It
 learns three functions: a representation $h$ mapping observations to a
-latent state, a dynamics function $g(z, a) = (\hat r, z')$, and a
-prediction function $f(z) = (\mathbf{p}, v)$. The latent model is not trained
-to reconstruct observations, only to predict, along real trajectories
+latent state, a dynamics function $g(\zeta, a) = (\hat r, \zeta')$, and a
+prediction function $f(\zeta) = (\mathbf{p}, v)$, where $\zeta$ is the
+latent state (not the game result $z$ of AlphaZero). The latent model is not
+trained to reconstruct observations, only to predict, along real trajectories
 unrolled for a few steps, the rewards, the values and the search policies:
 it models only what matters for planning. MuZero matched AlphaZero in board
 games and set the state of the art on Atari at the time.
@@ -539,9 +543,15 @@ close encounters.
 \end{remark}
 
 \paragraph{The search of the repository.} \code{pacman\_mcts.py} combines
-the PUCT rule of AlphaZero, with the PPO agent's policy as prior, and short
-rollouts: after a new node the agent plays greedily for $H = 10$ moves, then
-its value estimates the rest of the game. The simulations copy the real game
+the PUCT rule of AlphaZero, with the PPO agent's policy as prior,
+\begin{equation*}
+  \mathrm{score}(a) = \hat q(a) / 35 + 1.5\, p_a \sqrt{N + 1} / (1 + N_a),
+\end{equation*}
+($\hat q = 0$ for an unvisited move; the scale $35$, the penalty for being
+caught, brings the returns to the order of the prior term, without which
+PUCT would almost ignore the prior), and short rollouts: after a new node the
+agent plays greedily for $H = 10$ moves, then its value estimates the rest of
+the game. The simulations copy the real game
 (\code{env.clone()}) and move the ghosts with the game's own code, with
 random numbers of their own: the search uses the \code{exact} ghost model
 of \cref{sec:ghost-models}. It knows the ghosts' rules exactly (their
@@ -578,8 +588,10 @@ elsewhere the agent plays alone.
   simulations of a wave must be chosen before any of them is evaluated: the
   virtual loss pretends that each move being explored has just lost, so
   that the next simulations of the wave prefer other moves instead of all
-  piling into the same branch. With the cache of the ghosts' shortest
-  paths, a search of $100$ simulations is about $2.6$ times faster.
+  piling into the same branch. With waves of $16$ and a cache of the
+  ghosts' shortest paths, a search of $100$ simulations is about $2.6$ times
+  faster than in the first version (one simulation at a time, no cache);
+  the waves alone make it about twice as fast.
 \end{intuition}
 
 \begin{remark}{Lesson: check a faster search against the slow one}{}
@@ -673,9 +685,10 @@ at random otherwise, the two probabilities being estimated for each ghost
 from its moves since the start of the game (\cref{prop:ghost-estimator}).
 Every game starts from no information.
 
-The model has a generic form, simpler than the real ghosts': ghost $2$
-chases by straight-line distance and can be blocked by walls, and the
-random moves prefer to keep their direction. Only its two parameters per
+The model has a generic form, simpler than the real ghosts', which it does
+not reproduce: the real ghost $2$ chases by straight-line distance and can
+be blocked by walls, and the real random moves prefer to keep their
+direction. Only its two parameters per
 ghost are learnt.
 
 \begin{pacman}{The fair search}{fair-mcts}

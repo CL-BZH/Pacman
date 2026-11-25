@@ -88,11 +88,13 @@ that can be queried in any state.
 
 DAgger is an online learning algorithm in disguise: training on the
 aggregated data is ``follow the leader'' on the sequence of losses defined
-by the learner's own state distributions. Ross et al.\ show, with a
-no-regret learner, that some policy of the sequence has a cost $J(\pi) \leq
-J(\pi^\star) + u\, T \varepsilon_N + o(1)$, where $\varepsilon_N$ is the
-best training error on the aggregated data and $u$ bounds the increase of
-the expert's cost-to-go after one wrong action: the error grows linearly in
+by the learner's own state distributions. Ross et al.\ (2011, Theorem 3.2) show,
+with a no-regret learner and $N$ of order $u T$ iterations (up to logarithmic
+factors), that some policy of the sequence has a cost $J(\pi) \leq
+J(\pi^\star) + u\, T \varepsilon_N + O(1)$, where $\varepsilon_N$ is the
+true loss of the best policy in hindsight on the aggregated distributions and
+$u$ bounds the increase of the expert's cost-to-go after one wrong action: the
+error grows linearly in
 $T$ when the expert can recover from the learner's mistakes.
 
 \begin{intuition}
@@ -197,7 +199,9 @@ behaviour cloning term to the actor of TD3 (\cref{ch:continuous}):
   \max_\theta\; \E_{(s, a) \sim \mathcal{D}}\left[ \lambda\, Q_\phi(s,
   \mu_\theta(s)) - \norm{\mu_\theta(s) - a}^2 \right],
 \end{equation}
-a one-line change that is a strong baseline.
+where $\lambda = 2.5 / \overline{\abs{Q}}$ normalises the scale of the
+values ($\overline{\abs{Q}}$ is the average of $\abs{Q_\phi}$ over the
+mini-batch): a one-line change that is a strong baseline.
 
 \paragraph{Conservative values.} CQL (Kumar et al., 2020) learns a
 Q-function that underestimates the values of the actions absent from the
@@ -222,10 +226,11 @@ loss = td_loss + alpha * cql_loss
 \end{lstlisting}
 
 The following idealised, tabular version shows why the values become
-conservative. Let $\mu(\cdot \mid s)$ be the policy whose values are pushed
-down (in \eqref{eq:cql}, the softmax of $Q$), and consider the iteration
+conservative. Let $\nu(\cdot \mid s)$ be the policy whose values are pushed
+down (in \eqref{eq:cql}, the softmax of $Q$), $\pi$ the policy being
+evaluated, and consider the iteration
 \begin{equation*}
-  \hat Q_{k+1} = \argmin_Q\; \alpha \left( \E_{s, a \sim \mu} [Q(s, a)] -
+  \hat Q_{k+1} = \argmin_Q\; \alpha \left( \E_{s, a \sim \nu} [Q(s, a)] -
   \E_{s, a \sim \beta}[Q(s, a)] \right) + \frac{1}{2} \E_{s, a \sim \beta}
   \left[ \left( Q(s, a) - (\T^\pi \hat Q_k)(s, a) \right)^2 \right],
 \end{equation*}
@@ -234,24 +239,24 @@ $\beta(a \mid s) > 0$.
 
 \begin{proposition}{CQL underestimates the value}{cql}
   The minimiser is $\hat Q_{k+1}(s, a) = (\T^\pi \hat Q_k)(s, a) - \alpha
-  \left( \frac{\mu(a \mid s)}{\beta(a \mid s)} - 1 \right)$, and
+  \left( \frac{\nu(a \mid s)}{\beta(a \mid s)} - 1 \right)$, and
   \begin{equation}
-    \E_{a \sim \mu(\cdot \mid s)}\left[ \hat Q_{k+1}(s, a) \right] \leq
-    \E_{a \sim \mu(\cdot \mid s)}\left[ (\T^\pi \hat Q_k)(s, a) \right].
+    \E_{a \sim \nu(\cdot \mid s)}\left[ \hat Q_{k+1}(s, a) \right] \leq
+    \E_{a \sim \nu(\cdot \mid s)}\left[ (\T^\pi \hat Q_k)(s, a) \right].
   \end{equation}
 \end{proposition}
 
 \begin{proof}
   The objective separates over the pairs $(s, a)$. For one pair, the
-  derivative with respect to $Q(s, a)$ is $\alpha (\mu(a \mid s) - \beta(a
+  derivative with respect to $Q(s, a)$ is $\alpha (\nu(a \mid s) - \beta(a
   \mid s)) + \beta(a \mid s) (Q(s, a) - (\T^\pi \hat Q_k)(s, a))$ (up to
   the common factor of the state's weight); setting it to zero gives the
-  minimiser. For the inequality, $\E_\mu[\mu / \beta - 1] = \sum_a \mu(a)^2
+  minimiser. For the inequality, $\E_\nu[\nu / \beta - 1] = \sum_a \nu(a)^2
   / \beta(a) - 1 \geq 0$, by the Cauchy--Schwarz inequality $1 = (\sum_a
-  \mu(a))^2 \leq \sum_a \mu(a)^2 / \beta(a) \cdot \sum_a \beta(a)$.
+  \nu(a))^2 \leq \sum_a \nu(a)^2 / \beta(a) \cdot \sum_a \beta(a)$.
 \end{proof}
 
-The penalty is large where $\mu$ puts much more weight than the data:
+The penalty is large where $\nu$ puts much more weight than the data:
 exactly the actions whose values cannot be trusted.
 
 \begin{intuition}
@@ -281,9 +286,11 @@ V(s))} \log \pi(a \mid s)]$: behaviour cloning weighted by the advantage.
 \end{intuition}
 
 \begin{remark}{Offline RL and Pacman}{offline-pacman}
-  The replay memory of a DQN training run is an offline dataset of
-  millions of transitions of Pacman. Running DQN on it from scratch, without
-  interaction, is an instructive experiment: the values of the rare
+  The replay memory of a DQN training run is an offline dataset of a few
+  hundred thousand transitions of Pacman (with $3$-step returns, so the
+  conservative target needs the $n$-step discount). Running DQN on it from
+  scratch, without interaction, is an instructive experiment: the values of the
+  rare
   actions (walking into a ghost) are poorly constrained by the data, and
   the conservative loss above is a few lines to add to \code{DQN.learn}.
 \end{remark}

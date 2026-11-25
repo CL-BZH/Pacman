@@ -51,10 +51,13 @@ Tennenholtz, 2002) treats every state-action pair visited fewer than $m$
 times as leading to a fictitious state of maximal reward $R_{\max}$, and
 plans in the resulting model; either the plan collects near-optimal reward,
 or it visits an under-explored pair, which can happen only finitely often.
-R-max and its successors (E$^3$, MBIE, UCRL2) find a near-optimal policy
-with a number of mistakes polynomial in the numbers of states and actions,
-in $1 / (1 - \gamma)$ and in the accuracy: the MDP analogue of the
-logarithmic regret of UCB.
+R-max, the earlier E$^3$ (Kearns and Singh, 1998) and MBIE are
+\emph{PAC-MDP} methods: they find a near-optimal policy except for a number
+of mistakes polynomial in the numbers of states and actions, in $1 / (1 -
+\gamma)$ and in the accuracy. UCRL2 (Jaksch, Ortner and Auer, 2010) gives
+instead a regret bound, of order $D S \sqrt{A T}$ up to logarithms for an
+MDP of diameter $D$ in the average-reward setting: the counterpart, for
+MDPs, of the regret analysis of UCB.
 
 \paragraph{Exploration bonuses.} A simpler form of optimism adds a bonus
 to the reward,

@@ -139,8 +139,10 @@ quantities that change over time.
 
 A good algorithm therefore plays each suboptimal arm rarely, and the more
 rarely the larger its gap. The estimate of an arm after $n$ plays is the
-sample mean $\hat\mu_a$ of its rewards, which can be updated incrementally
-(\cref{prop:incremental}).
+sample mean $\hat\mu_a$ of its rewards, which can be updated incrementally:
+after the $n$-th reward $r_n$, $\hat\mu_n = \hat\mu_{n-1} + (r_n -
+\hat\mu_{n-1}) / n$, since $n \hat\mu_n = (n - 1) \hat\mu_{n-1} + r_n$
+(\cref{prop:incremental} gives the general form).
 
 \section{Greedy and $\varepsilon$-greedy}
 
@@ -206,8 +208,10 @@ algorithm, and with $\varepsilon = 1$ it plays at random.
 \end{proposition}
 
 \begin{proof}
-  At each round, with probability at least $\varepsilon / K$ arm $a$ is
-  played as a random arm, so $\E[N_a(T)] \geq \varepsilon T / K$; apply
+  Each arm is played once in the first $K$ rounds, and at each later
+  round, with probability at least $\varepsilon / K$, arm $a$ is played as
+  a random arm, so $\E[N_a(T)] \geq 1 + \varepsilon (T - K) / K \geq
+  \varepsilon T / K$ (for $\varepsilon \leq 1$); apply
   \cref{prop:regret-decomp}.
 \end{proof}
 
@@ -264,8 +268,8 @@ The first inequality bounds the probability that the sample mean
 \emph{overestimates} the true mean by more than $c$; the second, that it
 underestimates it by more than $c$. Some numbers: with $n = 100$ rewards
 and $c = 0.1$, each probability is at most $e^{-2} \approx 0.14$; with $n =
-400$ rewards, at most $e^{-8} \approx 0.0003$. Four times more data make a
-deviation of $0.1$ about $400$ times less likely.
+400$ rewards, at most $e^{-8} \approx 0.0003$. Four times more data divide
+the bound on the probability of a deviation of $0.1$ by about $400$.
 
 The inequality can be read the other way round, which is how it is used. Fix
 a small probability $\delta$ of being wrong and solve $e^{-2 n c^2} =
@@ -302,8 +306,8 @@ $N_a(t-1)$ (at round $t$, before choosing, the rounds $1$ to $t - 1$ have
 been played, and $N_a(t)$ counts the plays in the first $t$ rounds), and
 the probability $\delta$ of being wrong must shrink as the
 game goes on, otherwise a constant fraction of the decisions would rest on
-wrong bounds. UCB1 takes $\delta = t^{-4}$ at round $t$ (why the exponent
-$4$ will appear in the proof). Then $\ln(1/\delta) = 4 \ln t$, and
+wrong bounds. UCB1 takes $\delta = t^{-4}$ at round $t$ (the reason for
+the exponent $4$ will appear in the proof). Then $\ln(1/\delta) = 4 \ln t$, and
 \eqref{eq:hoeffding-ci} gives the bonus $c = \sqrt{4 \ln t / (2 N_a(t-1))}
 = \sqrt{2 \ln t / N_a(t-1)}$.
 
@@ -345,7 +349,7 @@ more and more rarely.
     \node[right] at (3.08, 0.30) {\small $\hat\mu = 0.30$};
     \node[right] at (3.08, 0.826) {\small index $0.83$};
   \end{tikzpicture}
-  \caption{UCB1 at round $t = 1000$ with three arms. The dot is the
+  \caption{UCB1 at round $t = 1001$ with three arms. The dot is the
     estimate $\hat\mu_a$, the bar extends it by the bonus $\sqrt{2 \ln t /
     N_a(t-1)}$ (and the same amount below), where $N = N_a(t-1)$ is the
     number of plays of the arm before round $t$. Arm 3 has the lowest
@@ -355,15 +359,16 @@ more and more rarely.
   \label{fig:ucb1}
 \end{figure}
 
-\Cref{fig:ucb1} shows a typical situation at round $t = 1000$, where $2
+\Cref{fig:ucb1} shows a typical situation at round $t = 1001$ (after
+$1000$ plays), where $2
 \ln t \approx 13.8$. Arm 1 has the best estimate, $0.60$, and has been
 played $800$ times: its bonus is $\sqrt{13.8/800} \approx 0.13$ and its
 index $0.73$. Arm 3 has the worst estimate, $0.30$, but only $50$ plays: its
 bonus is $\sqrt{13.8/50} \approx 0.53$ and its index $0.83$. UCB1 plays arm
 3. If arm 3 is really bad, its next rewards keep its estimate low while its
-bonus shrinks, and after a few more plays its index falls below that of arm
-1. If arm 3 was only unlucky at the start, its estimate rises and it
-deserves to be played.
+bonus shrinks, and after about twenty more plays its index falls below
+those of arms 2 and 1. If arm 3 was only unlucky at the start, its estimate
+rises and it deserves to be played.
 
 \begin{intuition}
   The index of an arm is the most optimistic mean that is still plausible
@@ -557,8 +562,8 @@ Such an algorithm is not learning anything; it is betting. The lower bound
 concerns the algorithms that are good on \emph{all} bandits of a family,
 for example all the Bernoulli bandits (each arm gives $1$ with probability
 $\mu_a$ and $0$ otherwise). ``Good'' is taken in a weak sense: the regret
-grows more slowly than any power of $T$, $\mathcal{R}_T = o(T^\alpha)$ for
-every $\alpha > 0$. Such algorithms are called \emph{consistent}; UCB1, whose
+grows more slowly than any power of $T$, $\mathcal{R}_T = o(T^c)$ for
+every $c > 0$. Such algorithms are called \emph{consistent}; UCB1, whose
 regret is $O(\ln T)$, is one of them.
 
 \paragraph{How different are two arms?} The difficulty of ruling out arm
@@ -599,8 +604,8 @@ adds up to about $n\, \mathrm{KL}(P \,\|\, Q)$.
 
 \begin{theorem}{Lai--Robbins lower bound (stated without proof)}{lai-robbins}
   Consider a consistent algorithm: on every bandit of a given parametric
-  family (for example the Bernoulli bandits), its regret is $o(T^\alpha)$
-  for every $\alpha > 0$. Then, on every bandit of the family and for every
+  family (for example the Bernoulli bandits), its regret is $o(T^c)$
+  for every $c > 0$. Then, on every bandit of the family and for every
   suboptimal arm $a$,
   \begin{equation}
     \liminf_{T \to \infty} \frac{\E[N_a(T)]}{\ln T} \geq
@@ -655,9 +660,9 @@ the best arm.
 
 \emph{Step 2: a consistent algorithm behaves very differently in the two
 bandits.} In the true bandit, arm $a$ is suboptimal, so a consistent
-algorithm plays it rarely: $\E[N_a(T)] = o(T^\alpha)$, and the probability
+algorithm plays it rarely: $\E[N_a(T)] = o(T^c)$, and the probability
 that it plays $a$ more than $T/2$ times is at most $\E[N_a(T)] / (T/2)$
-(Markov's inequality), which is $o(T^{\alpha - 1})$, very small. In the
+(Markov's inequality), which is $o(T^{c - 1})$, very small. In the
 modified bandit, arm $a$ is the best, so the algorithm plays the
 \emph{other} arms rarely, and plays $a$ more than $T/2$ times with a
 probability close to $1$. The event ``$N_a(T) > T/2$'' thus has a
@@ -682,14 +687,14 @@ $e^{-\text{evidence}}$: for any event $E$,
 \end{equation*}
 
 \emph{Step 4: conclude.} Take $E$ = ``$N_a(T) > T/2$''. By Step 2, the left
-side is at most about $T^{\alpha - 1}$, so $\frac{1}{2} \exp(-\E[N_a(T)]\,
-\mathrm{KL}) \lesssim T^{\alpha - 1}$, that is,
+side is at most about $T^{c - 1}$, so $\frac{1}{2} \exp(-\E[N_a(T)]\,
+\mathrm{KL}) \lesssim T^{c - 1}$, that is,
 \begin{equation*}
-  \E[N_a(T)] \gtrsim \frac{(1 - \alpha) \ln T}{\mathrm{KL}(\nu_a \,\|\,
+  \E[N_a(T)] \gtrsim \frac{(1 - c) \ln T}{\mathrm{KL}(\nu_a \,\|\,
   \nu'_a)}.
 \end{equation*}
-This holds for every $\alpha > 0$, and for every modified arm just above
-the best one. Letting $\alpha \to 0$ and moving the modified mean down to
+This holds for every $c > 0$, and for every modified arm just above
+the best one. Letting $c \to 0$ and moving the modified mean down to
 $0.6$, so that $\nu'_a$ tends to $\nu_\star$, gives the theorem: $\E[N_a(T)]
 \gtrsim \ln T / \mathrm{KL}(\nu_a \,\|\, \nu_\star)$. The logarithm comes
 from the error probability $1/T$ that consistency demands: making an
@@ -980,9 +985,9 @@ shows this effect.
   \end{center}
   Greedy and $\varepsilon$-greedy have a linear regret: each tenfold
   increase of $T$ multiplies it by about $10$ (by $4$ for $\varepsilon =
-  0.01$, which is still in transition). Thompson sampling adds about $19$
-  per tenfold increase: the logarithmic growth of the theory. UCB1 is also
-  sublinear but has a large constant: its bonus $\sqrt{2 \ln t / n}$,
+  0.01$, which is still in transition). Thompson sampling adds $14$, $17$,
+  then $20$ per tenfold increase: the logarithmic growth of the theory. UCB1 is
+  also sublinear but has a large constant: its bonus $\sqrt{2 \ln t / n}$,
   designed for the worst case of rewards in $[0, 1]$, keeps exploring
   long after the arms are well estimated, so it is overtaken by
   $\varepsilon = 0.01$ at first and only passes it after $10\,000$ rounds.
@@ -1076,8 +1081,9 @@ rewards.
 \end{proof}
 
 This is the one-state case of the policy gradient theorem
-(\cref{thm:pg}): the baseline reduces the variance without changing the
-expected update, exactly as in actor-critic methods.
+(\cref{thm:pg}): any baseline leaves the expected update unchanged, and a
+well-chosen one, such as the average reward, reduces its variance, exactly
+as in actor-critic methods.
 
 \paragraph{Why $\ind[b = A_t] - \pi(b)$ and not just $\ind[b = A_t]$?}
 Where the update comes from explains it. We want to increase $J(H) =

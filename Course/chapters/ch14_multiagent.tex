@@ -69,8 +69,18 @@ the value of the matrix game indexed by the two actions.
   functions $v, w$, the matrices defining $(\T v)(s)$ and $(\T w)(s)$
   differ entrywise by $\gamma \sum_{s'} p(s' \mid s, a_1, a_2) (v(s') -
   w(s'))$, at most $\gamma \norm{v - w}_\infty$ in absolute value. Hence
-  $\norm{\T v - \T w}_\infty \leq \gamma \norm{v - w}_\infty$. The rest
-  follows as for MDPs (\cref{thm:bellman-opt}).
+  $\norm{\T v - \T w}_\infty \leq \gamma \norm{v - w}_\infty$, and $\T$ has
+  a unique fixed point $v^\star$ (\cref{thm:bellman-opt}). For the
+  equilibrium, let $y^\star$ be player 2's optimal mixed strategies of the
+  matrix games at $v^\star$. Against $y^\star$, player 1 faces an MDP,
+  whose optimality operator is $\T_{y^\star} v(s) = \max_x x^\top M_v(s)\,
+  y^\star(s)$, with $M_v(s)$ the matrix in the definition of $\T$. Since
+  $y^\star(s)$ guarantees the value of its matrix game, $\max_x x^\top
+  M_{v^\star}(s)\, y^\star(s) = \mathrm{val}\, M_{v^\star}(s) = v^\star(s)$:
+  $v^\star$ is the fixed point of the contraction $\T_{y^\star}$, so the best
+  that player 1 can obtain against $y^\star$ is $v^\star$, and no deviation
+  helps him. The same argument holds for player 2, and the optimal
+  strategies form a stationary equilibrium.
 \end{proof}
 
 \begin{intuition}

@@ -21,8 +21,10 @@ over states, usually the frequency with which the policy visits them.
   a vector of $m$ features; the approximation is $\hat v(s; \mathbf{w}) =
   \mathbf{w}^\top \mathbf{x}(s)$. Let $X \in \R^{\abs{\States} \times m}$ be
   the matrix whose rows are the $\mathbf{x}(s)^\top$ (assumed of full column
-  rank) and $D = \mathrm{diag}(d)$. The weighted norm and the \emph{value
-  error} are
+  rank) and $D = \mathrm{diag}(d)$, with $d(s) > 0$ for every state (in an
+  episodic task, the states are the non-terminal ones, and $P_\pi$ below is
+  restricted to them, a sub-stochastic matrix). The weighted norm and the
+  \emph{value error} are
   \begin{equation}
     \norm{u}_D = \sqrt{\sum_s d(s)\, u(s)^2}, \qquad
     \overline{\mathrm{VE}}(\mathbf{w}) = \norm{X \mathbf{w} - v_\pi}_D^2.
@@ -142,18 +144,18 @@ generally \emph{not} the minimiser of $\overline{\mathrm{VE}}$.
     \mathbf{y}}_D \geq (1 - \gamma) \norm{\mathbf{y}}_D^2,
   \end{equation*}
   and $\mathbf{y} \neq 0$ when $\mathbf{w} \neq 0$ ($X$ has full column
-  rank and we assume $d > 0$). Let $\lambda > 0$ be the smallest eigenvalue
-  of the symmetric part $(A + A^\top)/2$, so that $\mathbf{e}^\top A
-  \mathbf{e} \geq \lambda \norm{\mathbf{e}}^2$. The error $\mathbf{e}_k =
-  \mathbf{w}_k - \mathbf{w}_{\mathrm{TD}}$ satisfies $\mathbf{e}_{k+1} =
-  (I - \alpha A) \mathbf{e}_k$, so
+  rank and $d > 0$). Let $\kappa > 0$ be the smallest eigenvalue of the
+  symmetric part $(A + A^\top)/2$, so that $\mathbf{z}^\top A \mathbf{z}
+  \geq \kappa \norm{\mathbf{z}}^2$. The error $\mathbf{z}_k = \mathbf{w}_k -
+  \mathbf{w}_{\mathrm{TD}}$ satisfies $\mathbf{z}_{k+1} = (I - \alpha A)
+  \mathbf{z}_k$, so
   \begin{equation*}
-    \norm{\mathbf{e}_{k+1}}^2 = \norm{\mathbf{e}_k}^2 - 2 \alpha
-    \mathbf{e}_k^\top A \mathbf{e}_k + \alpha^2 \norm{A \mathbf{e}_k}^2
-    \leq \left( 1 - 2 \alpha \lambda + \alpha^2 \norm{A}^2 \right)
-    \norm{\mathbf{e}_k}^2,
+    \norm{\mathbf{z}_{k+1}}^2 = \norm{\mathbf{z}_k}^2 - 2 \alpha
+    \mathbf{z}_k^\top A \mathbf{z}_k + \alpha^2 \norm{A \mathbf{z}_k}^2
+    \leq \left( 1 - 2 \alpha \kappa + \alpha^2 \norm{A}^2 \right)
+    \norm{\mathbf{z}_k}^2,
   \end{equation*}
-  and the factor is less than $1$ for $0 < \alpha < 2 \lambda /
+  and the factor is less than $1$ for $0 < \alpha < 2 \kappa /
   \norm{A}^2$.
 \end{proof}
 
@@ -221,7 +223,8 @@ Van Roy, 1997). How good is the fixed point?
   the square of the first, the distance to the ghost capped at $6$, and
   two indicators (ghost within $2$ cells; ghost closer to the cookie than
   Pacman). The weighting $d$ is the expected number of visits from a
-  uniform start, which satisfies $d P_\pi \leq d$. The script
+  uniform start, normalised to a probability distribution, which satisfies
+  $d P_\pi \leq d$. The script
   \code{Course/code/vfa\_escape.py} computes exactly:
   \begin{center}
     \begin{tabular}{@{}lc@{}}
@@ -288,8 +291,10 @@ Sutton et al., 2009) perform true stochastic gradient descent on the
   (\mathbf{b} - A \mathbf{w}),
 \end{equation}
 estimating the matrix product with a second set of weights; they converge
-off-policy. \emph{Emphatic} TD reweights the updates so that the effective
-weighting satisfies the condition of \cref{lem:p-nonexpansive}. Deep RL
+off-policy. \emph{Emphatic} TD (Sutton, Mahmood and White, 2016) reweights
+the updates so that the effective weighting is an on-policy distribution
+of the discounted problem, which again makes $A$ positive definite (by a
+variant of \cref{lem:p-nonexpansive}). Deep RL
 mostly relies instead on the stabilisers of DQN (target networks, replay
 memories close to on-policy), which weaken the triad without removing it.
 

@@ -253,7 +253,7 @@ evaluation above): it still converges to $v_\star$ as long as every state is
 updated infinitely often (Bertsekas and Tsitsiklis, 1989). This freedom
 allows focusing the computation on the states that matter, for example the
 states visited by the current policy (\emph{real-time dynamic
-programming}), or the states whose value changed most recently
+programming}), or the predecessors of the states whose value changed most
 (\emph{prioritised sweeping}, \cref{ch:model-based}).
 
 \section{Linear programming}
@@ -295,7 +295,9 @@ The program has $\abs{\States}$ variables and $\abs{\States}
 state-action pair, which can be interpreted as the discounted frequency of
 playing $a$ in $s$ (an \emph{occupancy measure}); optimal policies are read
 from the optimal dual solution as $\pi(a \mid s) \propto x(s, a)$. This
-dual view underlies several offline RL methods (\cref{ch:imitation}).
+dual view reappears in imitation learning, where GAIL matches the
+occupancy measures of the agent and of the expert (\cref{ch:imitation}),
+and in offline RL methods that estimate them (the DICE family).
 
 \begin{remark}{Generalised policy iteration}{gpi}
   Policy iteration and value iteration are two extremes of a common scheme,
@@ -322,8 +324,12 @@ version can be solved exactly, which shows what an optimal policy does.
   reaching it gives $+10$ and ends the episode, being eaten gives $-35$,
   and each move costs $0.15$, with $\gamma = 0.99$. Pacman moves first,
   then the ghost. The state is the pair (Pacman's cell, ghost's cell):
-  $77 \times 77 = 5929$ states. The script \code{Course/code/dp\_escape.py}
-  builds the transition probabilities and solves the MDP.
+  $77 \times 77 = 5929$ states. Cells are written (row, column), counted
+  from the top left corner of the maze; the cookie is at $(9, 13)$. The
+  script \code{Course/code/dp\_escape.py} builds the transition
+  probabilities and solves the MDP (its policy iteration breaks ties by
+  the first action and evaluates each policy iteratively, to $10^{-10}$;
+  here this gives the same policy as the rule of the algorithm).
   \begin{itemize}[nosep]
     \item Value iteration reaches $\norm{v_{k+1} - v_k}_\infty < 10^{-8}$
       after $57$ sweeps; policy iteration stops after $11$ iterations, far

@@ -166,18 +166,21 @@ corners would push Pacman to eat them early, but it encodes the answer
 changes only where some training games start.
 
 \begin{definition}{Exploring starts}{exploring-starts}
-  A method uses \emph{exploring starts} when its episodes do not all start
-  from the initial state, but some start from other states, so that those
-  states are visited often enough to be learnt. In Monte Carlo control,
-  starting from every state--action pair with positive probability
-  guarantees that every pair is evaluated.
+  In Monte Carlo control, \emph{exploring starts} (Sutton and Barto,
+  \S5.3) means that every episode starts from a state--action pair chosen
+  so that every pair has a positive probability of being the start; this
+  guarantees that every pair is evaluated. More loosely, any change of the
+  distribution of the starting states that makes some states visited more
+  often follows the same idea.
 \end{definition}
 
 The \emph{late starts} of \code{run\_episodes} (option
 \code{late\_start\_prob}) take their starting states from the agent's own
 games: a game started from the beginning is copied (\code{env.clone()}) when
 it reaches a number of cookies left drawn between $10$ and $40$, and a new
-game starts from one of the last $2000$ copies with probability $0.25$. The
+game starts from one of the last $2000$ copies with probability $0.25$.
+They are exploring starts only in the loose sense: they start from states
+that the agent's own games reach, and the agent chooses the first action. The
 cookies left are where the agent's own play leaves them, the copies follow
 the agent as it improves, and neither the rewards nor the rules change.
 
@@ -321,10 +324,11 @@ cores.
 
 On \code{v1}, expert iteration recovered about $60\%$ of the search's gain
 ($97.1\%$ to $97.7\%$, the search reaching $98.1\%$,
-\cref{pac:expert-results}); on \code{v2} about a tenth ($65.9\%$ to $67.3\%$,
-the search reaching about $82\%$). The training statistics point to the
-reason: the network reproduces only about $65\%$ of the search's
-corrections on its own training data ($76\%$ on \code{v1}).
+\cref{pac:expert-results}); on \code{v2} at most a small part ($65.9\%$ to
+$67.3\%$, a gain within the noise, the search reaching about $82\%$). The
+training statistics point to the reason: the network reproduces only about
+$65\%$ of the search's corrections on its own training data ($76\%$ on
+\code{v1}).
 
 \begin{intuition}
   On \code{v2} the search adds \emph{computation}, not only knowledge.
@@ -343,21 +347,25 @@ was run twice, with different random numbers, with $100$ and with $400$
 simulations. Two searches chose the same move on $97\%$ and $93\%$ of the
 positions, but mostly because both followed the network: the search chose
 the network's move on $92\%$ to $96\%$ of them. On the few positions where
-it overrode the network, a second search made the same override only about
-half the time ($6$ of $12$ with $100$ simulations, $9$ of $24$ with $400$).
+it overrode the network, a second search made the same override only half
+and a third of the time ($6$ of $12$ with $100$ simulations, $9$ of $24$
+with $400$): more simulations did not make the overrides more
+consistent.
 The corrections that matter are close calls, decided by the random
 simulations; a network cannot learn a coin flip, however large it is.
 
-Several ways forward remain: a stronger and more consistent teacher (more
-simulations), more data per iteration, a larger network; or keeping the PPO
-training on the game's rewards with a penalty for straying from the search's
+Several ways forward remain: a more consistent teacher (more simulations
+did not give one here), more data per iteration, a larger network; or keeping
+the PPO training on the game's rewards with a penalty for straying from the
+search's
 choices, as the KL penalty of RLHF keeps a policy close to a reference
 (\cref{eq:rlhf-objective}), instead of pure imitation.
 
 \section{Training longer}
 
-The consistency test pointed to the simplest remaining lever: train longer
-with the same network. \emph{Run 6} repeats run 4 (new rewards, late
+If the search's corrections cannot be learnt, what is left of the agent's
+own training? The simplest remaining lever is to train longer with the
+same network. \emph{Run 6} repeats run 4 (new rewards, late
 starts, from scratch) over $100$ million steps instead of $60$, the learning
 rate and the curriculum stretched over the longer training. It took $20$
 hours on a Colab T4: a cache of the ghosts' shortest paths, written for the
@@ -509,9 +517,11 @@ more cores.
 
 \begin{remark}{Lesson: a final checkpoint is a sample}{lesson-checkpoint}
   A paired test on $3000$ games is exact for the two networks compared, not
-  for the settings that produced them: two runs with the same settings, or
-  two checkpoints of one run, can differ by several points. Evaluate several
-  checkpoints near the end of a run, repeat a run before crediting its
+  for the settings that produced them: two checkpoints of one run differed
+  here by several points, and two runs with the same settings may differ
+  as much (no run of this chapter was repeated, so the late starts, the
+  new rewards and the longer training are each credited on one run). Evaluate
+  several checkpoints near the end of a run, repeat a run before crediting its
   setting, and continue a run at a small learning rate to see whether it had
   stopped too early.
 \end{remark}

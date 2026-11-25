@@ -102,11 +102,11 @@ handled by the same equations.
   does not help (the timer can be older than two frames). In game
   \code{v2} the eaten ghosts instead wait in a ghost house, visible on the
   board, and once Pacman's power has ended each of them leaves it with
-  probability $p = 0.1$ at each move. The waiting time $T$ is geometric,
-  $\Prob(T > k) = (1 - p)^k$, hence \emph{memoryless}:
+  probability $\eta = 0.1$ at each move. The waiting time $\tau$ is
+  geometric, $\Prob(\tau > k) = (1 - \eta)^k$, hence \emph{memoryless}:
   \begin{equation*}
-    \Prob(T > k + m \mid T > k) = \frac{(1 - p)^{k + m}}{(1 - p)^k} = (1 -
-    p)^m = \Prob(T > m).
+    \Prob(\tau > k + m \mid \tau > k) = \frac{(1 - \eta)^{k + m}}{(1 -
+    \eta)^k} = (1 - \eta)^m = \Prob(\tau > m).
   \end{equation*}
   How long a ghost has already waited tells nothing about when it will
   leave, and the image (with its power plane) is again a state.
@@ -194,8 +194,9 @@ effective number of steps the agent looks ahead.
 
 \begin{pacman}{Choosing $\gamma$}{gamma}
   The agents use $\gamma = 0.99$, an effective horizon of $100$ moves,
-  about the length of a game. The reward of winning ($+30$) obtained $80$
-  moves later is worth $30 \times 0.99^{80} \approx 13.4$ now: still enough
+  about the length of a game. The reward of winning ($+30$ when no ghost is
+  left) obtained $80$ moves later is worth $30 \times 0.99^{80} \approx 13.4$
+  now: still enough
   to make the agent prefer finishing the game over wandering, but less than
   eating a ghost now ($+20$). With $\gamma = 0.9$ (horizon $10$ moves) the
   win would be worth $30 \times 0.9^{80} \approx 0.007$: the agent would
@@ -502,9 +503,10 @@ equation shows that it does.
   An optimal policy needs no randomness and no memory: in each state it is
   enough to play an action maximising $q_\star(s, \cdot)$. Knowing
   $q_\star$ is therefore enough to act optimally, \emph{without} knowing
-  the dynamics $p$; this is the starting point of Q-learning and DQN
-  (\cref{ch:dqn}). Knowing $v_\star$ only is not enough to act: choosing
-  the greedy action requires $p$, i.e.\ a model of the environment. (One
+  the dynamics $p$; this is the starting point of Q-learning
+  (\cref{ch:td}) and DQN (\cref{ch:dqn}). Knowing $v_\star$ only is not enough
+  to act: choosing the greedy action requires $p$, i.e.\ a model of the
+  environment. (One
   can also show that policies depending on the whole history cannot do
   better than $v_\star$; see Puterman, \emph{Markov Decision Processes},
   1994, Theorem 6.2.10.)
@@ -539,7 +541,11 @@ equation shows that it does.
       $v_\star(s) = q_\star(s, a_2)$ solves $q = -0.15 + 0.99 (0.6\, q + 4)$,
       i.e.\ $q = 3.81 / 0.406 = 9.384 > 3.85$, which is consistent: flee.
   \end{itemize}
-  A $10\%$ change in the risk changes the optimal decision. Learning such
+  In each case one hypothesis is enough: $v_\star$ is the unique fixed point
+  of the Bellman optimality operator (\cref{thm:bellman-opt}), so a
+  consistent solution is the solution. Running is worth $29.75 - 64.75\,\rho$
+  and fleeing at most $9.384$, so the decision flips at $\rho \approx 0.31$:
+  a change of $0.1$ in the risk changes the optimal decision. Learning such
   trade-offs from experience is what the agents of the repository do.
 \end{pacman}
 

@@ -33,8 +33,8 @@ state changes the values of all the others, including the target.
 
 Sutton and Barto call the combination of \emph{function approximation},
 \emph{bootstrapping} and \emph{off-policy} learning the \emph{deadly
-triad}: each is harmless alone, together they can make the parameters
-diverge. A two-state example shows the mechanism.
+triad}: any two of them can be combined safely, all three together can
+make the parameters diverge. A two-state example shows the mechanism.
 
 \begin{proposition}{Divergence of semi-gradient TD}{divergence}
   Two states $s_1, s_2$ have features $x(s_1) = 1$ and $x(s_2) = 2$, and
@@ -205,10 +205,11 @@ an older, exploratory policy); with small $n$ this bias is outweighed by
 the faster propagation of rewards.
 
 The replay memory keeps, for each game, the last $n$ steps not yet
-stored. When it has $n$ of them, or when the game ends (or is aborted), it
-stores the oldest one as an $n$-step transition: discounted sum of the
-rewards, state reached, \code{done} flag, and the discount $\gamma^m$ to
-apply to the bootstrap.
+stored. When it has $n$ of them, it stores the oldest one as an $n$-step
+transition; when the game ends (or is aborted), it stores all of them,
+with shorter horizons $m < n$. Each transition holds the discounted sum
+of the rewards, the state reached, the \code{done} flag, and the discount
+$\gamma^m$ to apply to the bootstrap.
 \begin{lstlisting}[caption={Assembling $n$-step transitions
   (\code{memories.py}, \code{NStepReplayBuffer})}]
 def _emit_first(self, env_idx, s_next, done):
@@ -246,8 +247,9 @@ the first quarter of the training.
 
 Rainbow (Hessel et al., 2018) combines six extensions of DQN: the three
 above (double, dueling, $n$-step) and the three of this section. On the
-Atari benchmark, each contributes; prioritised replay, $n$-step targets and
-the distributional loss contribute most.
+Atari benchmark, removing prioritised replay, $n$-step targets or the
+distributional loss hurt most, while removing double Q-learning or the
+dueling network changed the median score little.
 
 \subsection{Prioritised experience replay}
 
@@ -265,9 +267,11 @@ gradient; the bias is corrected by weighting the loss of transition $i$ by
 \begin{equation}
   w_i = \left( \frac{1}{N\, P(i)} \right)^\beta,
 \end{equation}
-normalised by $\max_j w_j$. With $\beta = 1$ the weighted gradient is
-unbiased: $\E_{i \sim P}[w_i g_i] = \sum_i P(i) \frac{1}{N P(i)} g_i =
-\frac{1}{N} \sum_i g_i$. In practice $\beta$ grows from about $0.4$ to $1$
+where $N$ is the number of transitions in the memory, normalised by
+$\max_j w_j$. With $\beta = 1$ the weighted gradient is unbiased up to that
+normalisation, which only rescales the step: $\E_{i \sim P}[w_i g_i] = \sum_i
+P(i) \frac{1}{N P(i)} g_i = \frac{1}{N} \sum_i g_i$. In practice $\beta$ grows
+from about $0.4$ to $1$
 during training. In Pacman, deaths are rare and their TD errors large:
 prioritisation would replay them far more often than uniform sampling.
 
@@ -299,18 +303,22 @@ parametrisations are common.
     $51$ fixed atoms $z_1 < \dots < z_{51}$; the target distribution of
     $r + \gamma Z(s', a^\star)$, whose atoms $r + \gamma z_j$ fall between
     the fixed atoms, is projected back onto them (each mass is split
-    between the two neighbouring atoms in proportion to the distances), and
+    between the two neighbouring atoms by linear interpolation, the closer
+    atom receiving the larger share; values outside $[z_1, z_{51}]$ go to
+    the end atoms), and
     the network minimises the cross-entropy to it.
-  \item \textbf{QR-DQN} (Dabney et al., 2018) represents $Z(s, a)$ by $N$
-    values $\theta_1, \dots, \theta_N$, meant to be its quantiles at levels
-    $\tau_i = (2i - 1) / (2N)$, learnt with the quantile regression loss
+  \item \textbf{QR-DQN} (Dabney et al., 2018) represents $Z(s, a)$ by $N_q$
+    values $\theta_1, \dots, \theta_{N_q}$, meant to be its quantiles at
+    levels $\tau_i = (2i - 1) / (2N_q)$ (not to be confused with the Polyak
+    rate $\tau$), learnt with the quantile regression loss
     below.
 \end{itemize}
 
 \begin{proposition}{Quantile regression}{quantile}
-  Let $Z$ be a real random variable with a continuous distribution function
-  $F$, and $\rho_\tau(u) = u \left( \tau - \ind[u < 0] \right)$ for
-  $\tau \in (0, 1)$. Then $\theta \mapsto \E[\rho_\tau(Z - \theta)]$ is
+  Let $Z$ be a real random variable with $\E\abs{Z} < \infty$ and a
+  continuous distribution function $F$, and $\rho_\tau(u) = u \left( \tau -
+  \ind[u < 0] \right)$ for $\tau \in (0, 1)$. Then $\theta \mapsto
+  \E[\rho_\tau(Z - \theta)]$ is
   convex and minimised at the $\tau$-quantile $F^{-1}(\tau)$.
 \end{proposition}
 
@@ -355,8 +363,8 @@ observability, as in game \code{v2} (\cref{rem:pomdp}), by giving the
 agent a memory; distributed actors (Ape-X) collect experience at a much
 larger scale; Agent57 (2020) adds learnt exploration bonuses
 (\cref{ch:exploration}) and surpassed the human benchmark on all $57$
-Atari games. MuZero (\cref{ch:model-based}) replaces the replay of real
-transitions by planning with a learnt model.
+Atari games. MuZero (\cref{ch:model-based}) chooses its moves by planning
+with a learnt model, itself trained on replayed real trajectories.
 
 \section{The DQN agent of the repository}
 

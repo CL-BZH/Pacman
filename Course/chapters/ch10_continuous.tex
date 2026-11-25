@@ -14,19 +14,26 @@ actions, impossible on a continuum, by a learnt actor.
 \section{Deterministic policy gradients}
 
 Let $\mu_\theta : \States \to \R^k$ be a deterministic policy and $Q^\mu$ its
-action-value function. The idea of DDPG is to move the action
-$\mu_\theta(s)$ in the direction that increases $Q^\mu(s, \cdot)$.
+action-value function. (In this chapter, as in the papers it follows,
+capital letters $Q^\mu$, $Q^\pi$, $V^\pi$ denote true values; estimates carry
+their parameters, as $Q_\phi$. The symbol $\mu$ is the deterministic
+policy, not the initial distribution of \cref{ch:pg}.) The idea of DDPG is to
+move the action $\mu_\theta(s)$ in the direction that increases $Q^\mu(s,
+\cdot)$.
 
 \begin{theorem}{Deterministic policy gradient (stated without proof)}{dpg}
   Under regularity conditions (Silver et al., 2014), with $J(\theta) =
-  \E[\sum_t \gamma^t R_{t+1}]$ for the policy $\mu_\theta$ and $\rho^\mu$ its
-  discounted state distribution,
+  \E[\sum_t \gamma^t R_{t+1}]$ for the policy $\mu_\theta$ and
+  $\rho^\mu(s) = \sum_t \gamma^t \Prob(S_t = s)$ its (unnormalised)
+  discounted state measure,
   \begin{equation}
     \label{eq:dpg}
-    \nabla_\theta J(\theta) = \E_{s \sim \rho^\mu}\left[ \nabla_\theta
+    \nabla_\theta J(\theta) = \sum_s \rho^\mu(s) \left[ \nabla_\theta
     \mu_\theta(s)\, \nabla_a Q^\mu(s, a) \big|_{a = \mu_\theta(s)}
     \right].
   \end{equation}
+  (With the normalised distribution $(1 - \gamma) \rho^\mu$, a factor
+  $1 / (1 - \gamma)$ appears.)
 \end{theorem}
 
 The formula is the chain rule applied to $Q^\mu(s, \mu_\theta(s))$, with the
@@ -35,8 +42,10 @@ effect of $\theta$ on the state distribution does not appear. It is also
 the limit of the stochastic policy gradient for Gaussian policies whose
 variance tends to $0$. Since the gradient involves no expectation over
 actions, it can be estimated from states drawn from a replay memory filled
-by an exploratory policy: the deterministic policy gradient is naturally
-off-policy.
+by an exploratory policy without any importance ratio over actions: the
+deterministic policy gradient is naturally off-policy. With the states of
+the behaviour policy, it is only an approximate gradient (Silver et al.,
+2014, drop a term), which works well in practice.
 
 \begin{intuition}
   The actor proposes an action; the critic, being a differentiable
@@ -126,8 +135,9 @@ that maximises the reward \emph{and} its own entropy.
   The agent is paid for keeping its options open: at each step it receives,
   besides the reward, a bonus equal to the entropy of its policy, converted
   into reward units by the temperature $\alpha$. Among behaviours with the
-  same reward it prefers the most random one, and it becomes deterministic
-  only where determinism pays more than $\alpha$ times the entropy given up.
+  same reward it prefers the most random one, and it concentrates on an
+  action only to the extent that this pays more than $\alpha$ times the
+  entropy given up (for $\alpha > 0$ it never becomes fully deterministic).
   In the soft value, $-\alpha \log \pi(a \mid s)$ is the bonus earned by
   playing an unlikely action.
 \end{intuition}
@@ -195,9 +205,10 @@ and soft policy iteration becomes policy iteration. In practice:
     \alpha \log \pi_\theta(\tilde a' \mid s') \right)$ with $\tilde a' \sim
     \pi_\theta(\cdot \mid s')$;
   \item the actor minimises $\E_{s} \E_{a \sim \pi_\theta}[\alpha \log
-    \pi_\theta(a \mid s) - \min_i Q_{\phi_i}(s, a)]$, the KL divergence of
-    the lemma up to a constant, using the \emph{reparametrisation trick}:
-    $a = \tanh(\mu_\theta(s) + \sigma_\theta(s) \odot \xi)$ with $\xi \sim
+    \pi_\theta(a \mid s) - \min_i Q_{\phi_i}(s, a)]$, $\alpha$ times the KL
+    divergence of the lemma up to a term independent of $\theta$, using the
+    \emph{reparametrisation trick}: $a = \tanh(\mu_\theta(s) + \sigma_\theta(s)
+    \odot \xi)$ with $\xi \sim
     \mathcal{N}(0, I)$, so that gradients flow through the sampled action;
   \item the temperature is adjusted automatically so that the entropy of
     the policy stays near a target (for example $-k$ for $k$-dimensional

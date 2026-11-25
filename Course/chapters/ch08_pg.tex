@@ -18,7 +18,9 @@ one score (\emph{logit}) $z_\theta(s, a)$ per action, and
   \exp z_\theta(s, b)}.
 \end{equation}
 Compared with an $\varepsilon$-greedy policy, a softmax policy changes
-smoothly with $\theta$, can represent any stochastic policy, and explores
+smoothly with $\theta$, can represent any stochastic policy that gives every
+action a positive probability (deterministic ones only as limits), and
+explores
 by itself in the states where it is uncertain.
 
 \begin{proposition}{Score of a softmax policy}{softmax-score}
@@ -261,8 +263,9 @@ advantage estimator interpolates between the two.
   and $(1 - \lambda) \sum_{n > l} \lambda^{n-1} = \lambda^l$. The left-hand
   side is $G_t^\lambda - V(S_t)$ because the weights $(1 -
   \lambda)\lambda^{n-1}$ sum to $1$ (for $\lambda < 1$; the case
-  $\lambda = 1$ is (ii)). All sums are finite, which justifies the
-  exchange.
+  $\lambda = 1$ is (ii)). The double series converges absolutely (the
+  $\delta_{t+l}$ are bounded and $\lambda \gamma < 1$), which justifies the
+  exchange; this is the computation of \cref{lem:lambda-td}.
 \end{proof}
 
 \begin{intuition}

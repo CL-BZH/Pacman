@@ -101,8 +101,9 @@ fluency and the diversity of the reference model.
 
 \begin{intuition}
   The optimal policy keeps the reference model's judgement of what is a
-  plausible answer and tilts it towards rewarded answers: an answer whose
-  reward is higher by $\beta$ becomes $e \approx 2.7$ times more likely. It
+  plausible answer and tilts it towards rewarded answers: of two answers
+  equally likely under the reference, the one whose reward is higher by
+  $\beta$ becomes $e \approx 2.7$ times more likely. It
   cannot invent answers that the reference considers impossible ($\pi_{\mathrm
   {ref}} = 0$ stays $0$). The parameter $\beta$ sets how far the tilt may
   go, and so how much the learnt reward is trusted.
@@ -124,8 +125,10 @@ which doubles the memory. Since the reward is given per answer, a baseline
 can instead be computed by sampling several answers per prompt: GRPO (Shao
 et al., 2024) samples $G$ answers, and uses as advantage of each answer its
 reward standardised within the group, $A_i = (r_i - \mathrm{mean}(r)) /
-\mathrm{std}(r)$, in the clipped PPO objective. It is the baseline of
-\cref{ch:pg} estimated by Monte Carlo instead of a network. With rewards
+\mathrm{std}(r)$, in the clipped PPO objective. The mean is the baseline of
+\cref{ch:pg} estimated by Monte Carlo instead of a network; the division by
+the standard deviation is an extra normalisation per prompt, which
+reweights the prompts and so changes the objective slightly. With rewards
 that can be checked automatically (a mathematical answer, a program that
 passes its tests), this RL with verifiable rewards trains models to
 reason at length before answering.

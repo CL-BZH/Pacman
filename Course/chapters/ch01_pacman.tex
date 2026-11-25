@@ -126,13 +126,16 @@ at a distance at least $2$ from Pacman.
 move of everybody, in this order:
 \begin{enumerate}[nosep]
   \item ghost $0$ moves;
-  \item Pacman moves; his power credit (see below) decreases by one;
-    he eats the cookie of his new cell, if any;
+  \item Pacman moves and his power credit (see below) decreases by one;
+    if he survives the collision test below, he eats the cookie of his
+    new cell, if any;
   \item the other ghosts move.
 \end{enumerate}
 After each of these moves, if Pacman and a ghost are on the same cell, the
 ghost eats Pacman (who loses the game) if Pacman has no power, and Pacman
-eats the ghost otherwise (the ghost leaves the game).
+eats the ghost otherwise (the ghost leaves the game). So Pacman, without
+power, moving onto a ghost that stands on a cookie is eaten before
+reaching the cookie.
 
 \paragraph{The power.} Eating a power cookie sets Pacman's \emph{power
 credit} to $C = 12$. The credit decreases by one at each move of Pacman, and
@@ -274,7 +277,8 @@ supervised learning.
 \section{Game v2}
 \label{sec:v2}
 
-On game \code{v1} the trained agents win more than $96\%$ of the games and
+On game \code{v1} the best trained agents (\cref{ch:ppo}) win more than
+$96\%$ of the games and
 usually eat both ghosts early, after which the game is only about cookies.
 Game \code{v2} makes the whole game matter: a bigger maze
 (\code{pacman\_map4}, $17 \times 19$ cells, $163$ open), three ghosts, four
@@ -283,10 +287,16 @@ ghosts that start in a \emph{ghost house} in the middle of the maze and
 \emph{come back} to it when eaten (once Pacman's power has ended, each
 ghost in the house leaves it with probability $0.1$ at each move), and
 ghosts whose random moves prefer their current direction
-(\cref{rem:ghost-heading}). Since there is always a ghost left, two rewards
+(\cref{rem:ghost-heading}). Since there is always a ghost left, three rewards
 of \cref{tab:rewards} change: a cookie eaten with power keeps its reward
-$+0.8$, and a power cookie is worth a fixed $1.3$, without the bonus of
-\eqref{eq:power-reward} for a close ghost. Unless stated
+$+0.8$, a power cookie is worth a fixed $1.3$, without the bonus of
+\eqref{eq:power-reward} for a close ghost, and winning gives $+30$ whatever
+the number of ghosts left. The third ghost does not chase along a shortest
+path: when it chases, it moves to a neighbouring cell drawn with weights
+proportional to
+$1/d^2$, $d$ being the straight-line distance from that cell to Pacman,
+multiplied by $1.5$ for the cell that keeps its direction, and it never
+stays in place; walls can therefore block it. Unless stated
 otherwise, the examples of this course use game \code{v1}, on which all the
 results were obtained.
 
@@ -309,6 +319,9 @@ results were obtained.
   \item \textbf{Further topics.} \cref{ch:exploration} returns to
     exploration in large environments, \cref{ch:multiagent} to several
     agents, \cref{ch:rlhf} to learning from human preferences.
+  \item \textbf{A project.} \cref{ch:v2-project} follows game \code{v2}
+    from start to finish: evaluation, diagnosis, rewards, curricula,
+    search, and the lessons of a real RL project.
 \end{itemize}
 The Pacman examples use the code of the repository; code excerpts show
 how the equations are implemented. The chapters on continuous actions,
